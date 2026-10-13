@@ -1,0 +1,87 @@
+# Contrôle d'accès : CORS, Supabase, Firebase.
+
+- id: DOT-ACC-001
+  severity: medium
+  category: access
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs}"]
+    exclude: ["**/*.min.js"]
+    pattern: '\borigin\s*:\s*(?:["'']\*["'']|true)\b|\bcors\(\s*\)|\.register\(\s*(?:fastifyCors|cors)\s*\)'
+  text:
+    fr:
+      title: CORS ouvert à tous les sites
+      explanation: N'importe quel site peut appeler ton API depuis le navigateur de tes visiteurs ; combiné à des cookies ou à une clé côté client, il peut agir à leur place.
+      fix: "Liste les origines autorisées : cors({ origin: ['https://ton-site.fr'] }). En développement, ajoute localhost explicitement."
+    en:
+      title: CORS open to every site
+      explanation: Any website can call your API from your visitors' browsers; combined with cookies or a client-side key, it can act on their behalf.
+      fix: "List the allowed origins: cors({ origin: ['https://your-site.com'] }). In development, add localhost explicitly."
+
+- id: DOT-ACC-002
+  severity: low
+  category: access
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,json,py,php,go}", "**/next.config.*", "**/vercel.json", "**/netlify.toml", "**/_headers"]
+    flags: i
+    pattern: 'Access-Control-Allow-Origin["'']?\s*[,:=]\s*(?:\{\s*)?(?:["'']?value["'']?\s*:\s*)?["'']\*["'']'
+  text:
+    fr:
+      title: En-tête Access-Control-Allow-Origin à « * »
+      explanation: Cet en-tête autorise tous les sites à lire les réponses de ton serveur depuis le navigateur.
+      fix: Renvoie l'origine exacte de ton front (https://ton-site.fr) et ajoute « Vary Origin » si tu en autorises plusieurs.
+    en:
+      title: Access-Control-Allow-Origin header set to "*"
+      explanation: This header lets every website read your server's responses from the browser.
+      fix: Return the exact origin of your front end (https://your-site.com) and add "Vary Origin" if you allow several.
+
+- id: DOT-ACC-003
+  severity: medium
+  category: access
+  detector:
+    type: regex
+    files: ["**/*.py"]
+    pattern: 'allow_origins\s*=\s*\[\s*["'']\*["'']|\bCORS\(\s*app\s*\)|origins\s*=\s*["'']\*["'']|CORS_ALLOW_ALL_ORIGINS\s*=\s*True|CORS_ORIGIN_ALLOW_ALL\s*=\s*True'
+  text:
+    fr:
+      title: CORS ouvert à tous les sites (Python)
+      explanation: FastAPI, Flask ou Django acceptent ici les requêtes de n'importe quel site depuis le navigateur de tes visiteurs.
+      fix: "Donne la liste des origines autorisées : allow_origins=['https://ton-site.fr'] (FastAPI), CORS(app, origins=[...]) (Flask), CORS_ALLOWED_ORIGINS (Django)."
+    en:
+      title: CORS open to every site (Python)
+      explanation: FastAPI, Flask or Django accept requests here from any website through your visitors' browsers.
+      fix: "Pass the list of allowed origins: allow_origins=['https://your-site.com'] (FastAPI), CORS(app, origins=[...]) (Flask), CORS_ALLOWED_ORIGINS (Django)."
+
+- id: DOT-ACC-004
+  severity: critical
+  category: access
+  detector:
+    type: supabase-rls
+    files: ["**/*.sql"]
+  text:
+    fr:
+      title: Table Supabase sans RLS
+      explanation: Sans Row Level Security, n'importe qui avec ta clé anon (publique, elle est dans ton front) peut lire, modifier ou supprimer toutes les lignes de cette table.
+      fix: "Ajoute « alter table nom enable row level security; » dans une migration, puis écris des policies (ex. chacun ne voit que ses propres lignes)."
+    en:
+      title: Supabase table without RLS
+      explanation: Without Row Level Security, anyone with your anon key (public, it ships in your front end) can read, change or delete every row of this table.
+      fix: "Add \"alter table name enable row level security;\" in a migration, then write policies (e.g. users only see their own rows)."
+
+- id: DOT-ACC-005
+  severity: critical
+  category: access
+  detector:
+    type: regex
+    files: ["**/*.rules", "**/firestore.rules", "**/storage.rules", "**/database.rules.json"]
+    pattern: 'allow\s+[a-z,\s]+:\s*if\s+true\b|allow\s+[a-z,\s]+;\s*$|"\.(?:read|write)"\s*:\s*true\b'
+  text:
+    fr:
+      title: Règles Firebase ouvertes à tous
+      explanation: Avec « if true », n'importe qui sur Internet peut lire et écrire dans ta base ou ton stockage, sans être connecté.
+      fix: "Exige au minimum une connexion et limite chacun à ses données : allow read, write: if request.auth != null && request.auth.uid == userId;"
+    en:
+      title: Firebase rules open to everyone
+      explanation: With "if true", anyone on the internet can read and write your database or storage, without signing in.
+      fix: "At least require sign-in and limit users to their own data: allow read, write: if request.auth != null && request.auth.uid == userId;"

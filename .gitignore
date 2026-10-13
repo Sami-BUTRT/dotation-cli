@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.sarif
+
+# Le .env de la fixture vulnérable est versionné exprès (faux secrets) : il teste la règle DOT-CFG-001.
+!fixtures/vulnerable-app/.env
+release/

@@ -1,0 +1,181 @@
+# Règles Semgrep de dotation : locales, ciblées sur les erreurs fréquentes du code généré par IA.
+# Utilisées seules (jamais le registre en ligne). Textes dans metadata.dotation (fr/en), affichés à la place du message.
+
+rules:
+  - id: sql-injection-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: SQL query built from a variable (SQL injection)
+    patterns:
+      - pattern-either:
+          - pattern: $OBJ.$METHOD(`...${...}...`, ...)
+          - pattern: $OBJ.$METHOD("..." + $X, ...)
+          - pattern: $OBJ.$METHOD($A + "..." + $B, ...)
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(query|execute|raw|queryRaw|\$queryRawUnsafe|\$executeRawUnsafe|unsafe|run|all|get|prepare)$
+      - pattern-regex: (?i)\b(select\s|insert\s+into|update\s+\w+\s+set|delete\s+from|where\s)
+      # Valeurs passées en paramètres (?, $1) : seuls des noms de table ou de colonne sont interpolés.
+      # pattern-not-regex n'écarte qu'un résultat contenu dans la correspondance : on couvre donc toute la ligne.
+      - pattern-not-regex: (?m)^.*(?:=\s*\?|\$\d).*$
+    metadata:
+      dotation:
+        severity: critical
+        category: code
+        fr:
+          title: Injection SQL possible
+          explanation: La requête est assemblée avec une valeur venue de l'extérieur ; un utilisateur peut y glisser du SQL et lire ou effacer ta base.
+          fix: "Utilise des paramètres : db.query('select * from users where id = $1', [id]) (ou les requêtes paramétrées de ton ORM)."
+        en:
+          title: Possible SQL injection
+          explanation: The query is built with an outside value; a user can slip SQL into it and read or wipe your database.
+          fix: "Use parameters: db.query('select * from users where id = $1', [id]) (or your ORM's parameterized queries)."
+
+  - id: sql-injection-py
+    languages: [python]
+    severity: ERROR
+    message: SQL query built with string formatting (SQL injection)
+    pattern-either:
+      - pattern: $CUR.execute(f"...", ...)
+      - pattern: $CUR.execute("..." % $X, ...)
+      - pattern: $CUR.execute("...".format(...), ...)
+      - pattern: $CUR.execute("..." + $X, ...)
+      - pattern: $DB.execute(text(f"..."), ...)
+    metadata:
+      dotation:
+        severity: critical
+        category: code
+        fr:
+          title: Injection SQL possible
+          explanation: La requête est assemblée avec du formatage de chaîne ; un utilisateur peut y glisser du SQL et lire ou effacer ta base.
+          fix: "Passe les valeurs en paramètres : cursor.execute(\"select * from users where id = %s\", (user_id,))."
+        en:
+          title: Possible SQL injection
+          explanation: The query is built with string formatting; a user can slip SQL into it and read or wipe your database.
+          fix: "Pass values as parameters: cursor.execute(\"select * from users where id = %s\", (user_id,))."
+
+  - id: eval-dynamic
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: eval or Function on a dynamic value
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: new Function(..., $X)
+      - pattern-not: eval("...")
+      - pattern-not: new Function(..., "...")
+    metadata:
+      dotation:
+        severity: high
+        category: code
+        fr:
+          title: Code exécuté depuis une valeur dynamique (eval)
+          explanation: Si cette valeur vient d'un utilisateur, il peut faire exécuter n'importe quel code à ton application.
+          fix: Évite eval et new Function. Pour du JSON, utilise JSON.parse ; pour choisir une action, une table de correspondance.
+        en:
+          title: Code run from a dynamic value (eval)
+          explanation: If this value comes from a user, they can make your app run any code they like.
+          fix: Avoid eval and new Function. For JSON use JSON.parse; to pick an action, use a lookup table.
+
+  - id: command-injection-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Shell command built from a variable
+    pattern-either:
+      - pattern: exec(`...${...}...`, ...)
+      - pattern: execSync(`...${...}...`, ...)
+      - pattern: $CP.exec(`...${...}...`, ...)
+      - pattern: $CP.execSync(`...${...}...`, ...)
+      - pattern: exec("..." + $X, ...)
+      - pattern: execSync("..." + $X, ...)
+      - pattern: $CP.exec("..." + $X, ...)
+      - pattern: $CP.execSync("..." + $X, ...)
+    metadata:
+      dotation:
+        severity: critical
+        category: code
+        fr:
+          title: Commande système construite avec une variable
+          explanation: Un « ; » ou un « && » glissé dans la valeur suffit pour exécuter n'importe quelle commande sur ton serveur.
+          fix: "Utilise execFile ou spawn avec une liste d'arguments (execFile('convert', [input, output])), jamais une chaîne assemblée."
+        en:
+          title: Shell command built from a variable
+          explanation: A ";" or "&&" slipped into the value is enough to run any command on your server.
+          fix: "Use execFile or spawn with an argument list (execFile('convert', [input, output])), never an assembled string."
+
+  - id: command-injection-py
+    languages: [python]
+    severity: ERROR
+    message: Shell command with shell=True or os.system
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.$F(..., shell=True, ...)
+          - pattern: os.system($X)
+          - pattern: os.popen($X)
+      - pattern-not: os.system("...")
+      - pattern-not: os.popen("...")
+      - pattern-not: subprocess.$F("...", ..., shell=True, ...)
+    metadata:
+      dotation:
+        severity: high
+        category: code
+        fr:
+          title: Commande système passée par le shell
+          explanation: Avec shell=True ou os.system, une valeur contenant « ; » ou « $( ) » fait exécuter d'autres commandes.
+          fix: "Passe une liste d'arguments sans shell : subprocess.run([\"ls\", dossier], check=True)."
+        en:
+          title: Shell command through the shell
+          explanation: With shell=True or os.system, a value containing ";" or "$( )" runs other commands.
+          fix: "Pass an argument list without a shell: subprocess.run([\"ls\", folder], check=True)."
+
+  - id: dangerously-set-inner-html
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: dangerouslySetInnerHTML with a dynamic value
+    patterns:
+      - pattern: '<$EL dangerouslySetInnerHTML={{__html: $X}} />'
+      - pattern-not: '<$EL dangerouslySetInnerHTML={{__html: "..."}} />'
+      - pattern-not: '<$EL dangerouslySetInnerHTML={{__html: $SAN.sanitize(...)}} />'
+      - pattern-not: '<$EL dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(...)}} />'
+      # Script d'initialisation du thème (Next.js) : contenu écrit par le développeur.
+      - pattern-not: '<script dangerouslySetInnerHTML={{__html: $X}} />'
+    paths:
+      # Composants shadcn/ui (chart.tsx…) : générés, le HTML vient de la configuration, pas des utilisateurs.
+      exclude: ["**/components/ui/**"]
+    metadata:
+      dotation:
+        severity: medium
+        category: code
+        fr:
+          title: HTML injecté sans nettoyage (XSS)
+          explanation: Si ce contenu vient d'un utilisateur ou d'une API, il peut contenir un script qui s'exécutera chez tes visiteurs.
+          fix: Affiche le texte normalement ({contenu}) ou nettoie le HTML avant (DOMPurify.sanitize).
+        en:
+          title: HTML injected without sanitizing (XSS)
+          explanation: If this content comes from a user or an API, it can hold a script that runs in your visitors' browsers.
+          fix: Render the text normally ({content}) or sanitize the HTML first (DOMPurify.sanitize).
+
+  - id: unsafe-deserialization-py
+    languages: [python]
+    severity: ERROR
+    message: Unsafe deserialization (pickle / yaml.load)
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads(...)
+          - pattern: pickle.load(...)
+          - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
+    metadata:
+      dotation:
+        severity: high
+        category: code
+        fr:
+          title: Désérialisation dangereuse
+          explanation: pickle et yaml.load peuvent exécuter du code caché dans les données ; un fichier ou une requête piégés suffisent.
+          fix: Utilise yaml.safe_load, et JSON plutôt que pickle pour toute donnée qui peut venir de l'extérieur.
+        en:
+          title: Unsafe deserialization
+          explanation: pickle and yaml.load can run code hidden in the data; a crafted file or request is enough.
+          fix: Use yaml.safe_load, and JSON rather than pickle for any data that can come from outside.

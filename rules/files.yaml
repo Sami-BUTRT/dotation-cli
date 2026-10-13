@@ -1,0 +1,53 @@
+# Fichiers sensibles versionnés et .gitignore.
+
+- id: DOT-CFG-001
+  severity: critical
+  category: config
+  detector:
+    type: tracked-file
+    files: [".env", ".env.*"]
+    exclude: [".env*.example", ".env*.sample", ".env*.template", ".env*.dist", ".env*.default", ".env*.defaults", "**/fixtures/**"]
+    publicEnvSeverity: low
+  text:
+    fr:
+      title: Fichier .env versionné dans git
+      explanation: Un .env contient d'habitude des clés et des mots de passe ; versionné, il est lisible par toute personne qui a accès au dépôt, pour toujours (historique).
+      fix: "Retire-le du suivi (git rm --cached .env), ajoute .env au .gitignore, puis change les secrets qu'il contenait. Partage un .env.example sans valeurs à la place."
+    en:
+      title: .env file committed to git
+      explanation: A .env usually holds keys and passwords; once committed, anyone with repo access can read it, forever (history).
+      fix: "Stop tracking it (git rm --cached .env), add .env to .gitignore, then rotate the secrets it contained. Share a .env.example without values instead."
+
+- id: DOT-CFG-002
+  severity: critical
+  category: config
+  detector:
+    type: tracked-file
+    files: ["*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "*-firebase-adminsdk-*.json", "serviceAccountKey.json", "*.keystore"]
+    exclude: ["**/fixtures/**"]
+  text:
+    fr:
+      title: Fichier de clé versionné dans git
+      explanation: Clés privées, certificats avec clé et comptes de service donnent un accès direct à tes serveurs ou à ton cloud.
+      fix: "Retire le fichier du suivi (git rm --cached), ajoute-le au .gitignore et remplace la clé : elle est déjà dans l'historique."
+    en:
+      title: Key file committed to git
+      explanation: Private keys, certificates with keys and service accounts give direct access to your servers or cloud.
+      fix: "Stop tracking the file (git rm --cached), add it to .gitignore and replace the key: it is already in the history."
+
+- id: DOT-CFG-003
+  severity: medium
+  category: config
+  detector:
+    type: not-gitignored
+    path: .env
+    when: ["package.json", "requirements.txt", "pyproject.toml", "composer.json", "Gemfile", "go.mod", ".env*"]
+  text:
+    fr:
+      title: .env absent du .gitignore
+      explanation: Sans cette ligne, le premier « git add . » enverra tes clés dans le dépôt.
+      fix: "Ajoute ces lignes à ton .gitignore : .env et .env*.local (garde un .env.example sans valeurs)."
+    en:
+      title: .env missing from .gitignore
+      explanation: Without this line, the first "git add ." will push your keys into the repo.
+      fix: "Add these lines to your .gitignore: .env and .env*.local (keep a .env.example without values)."

@@ -1,0 +1,51 @@
+{
+  "name": "dotation",
+  "version": "0.1.0",
+  "description": "Security hygiene scanner: finds basic security slip-ups before you ship. Scans run locally.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "dotation": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "rules",
+    "engines",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "pretest": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "pack:release": "bash scripts/pack-release.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "commander": "15.0.0",
+    "picocolors": "1.1.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sami-BUTRT/dotation-cli.git"
+  },
+  "homepage": "https://www.dotation.app",
+  "bugs": {
+    "url": "https://github.com/Sami-BUTRT/dotation-cli/issues"
+  }
+}

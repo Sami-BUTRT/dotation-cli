@@ -1,0 +1,39 @@
+# Checks on every push and pull request. External engines (Gitleaks, Semgrep, OSV-Scanner) are not installed here:
+# the tests that need them are skipped, which also checks that a scan works with the built-in rules alone.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      # npm 11: npm 10 crashes on Vitest's dependency tree.
+      - name: Types, lint, tests, build
+        run: |
+          set -euo pipefail
+          npx --yes npm@11.6.2 ci --no-fund
+          npm audit --omit=dev --audit-level=high
+          npm run typecheck
+          npm run lint
+          npm test
+          node dist/cli.js scan fixtures/clean-app --fail-on low
+      - name: Release package installs without the npm registry
+        run: |
+          set -euo pipefail
+          npx --yes npm@11.6.2 run pack:release
+          npm install -g --prefix "$RUNNER_TEMP/p" --registry http://127.0.0.1:9/ --no-audit --no-fund ./release/dotation.tgz
+          "$RUNNER_TEMP/p/bin/dotation" scan fixtures/clean-app --fail-on low

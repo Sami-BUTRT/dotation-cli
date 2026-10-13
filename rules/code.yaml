@@ -1,0 +1,53 @@
+# Réglages dangereux dans le code.
+
+- id: DOT-CODE-001
+  severity: high
+  category: code
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,py}", "**/.env*"]
+    pattern: 'NODE_TLS_REJECT_UNAUTHORIZED\s*[=:]\s*["'']?0|rejectUnauthorized\s*:\s*false|\bverify\s*=\s*False\b'
+  text:
+    fr:
+      title: Vérification TLS désactivée
+      explanation: Sans vérification du certificat, quelqu'un sur le réseau peut se placer entre ton app et le serveur et lire ou modifier les échanges.
+      fix: Retire ce réglage. Si un certificat interne pose problème, fournis son autorité (option ca, ou NODE_EXTRA_CA_CERTS) au lieu de tout désactiver.
+    en:
+      title: TLS verification disabled
+      explanation: Without certificate checks, someone on the network can sit between your app and the server and read or change the traffic.
+      fix: Remove this setting. If an internal certificate is the issue, provide its authority (ca option, or NODE_EXTRA_CA_CERTS) instead of turning checks off.
+
+- id: DOT-CODE-002
+  severity: high
+  category: code
+  detector:
+    type: regex
+    files: ["**/*.py"]
+    pattern: '\.run\([^)]*\bdebug\s*=\s*True|^\s*DEBUG\s*=\s*True\b'
+  text:
+    fr:
+      title: Mode debug activé
+      explanation: En mode debug, une erreur affiche le code, les variables et parfois une console qui permet d'exécuter des commandes sur le serveur.
+      fix: Lis ce réglage depuis l'environnement (DEBUG = os.environ.get("DEBUG") == "1") et laisse-le désactivé en production.
+    en:
+      title: Debug mode enabled
+      explanation: In debug mode, an error shows code, variables and sometimes a console that can run commands on the server.
+      fix: Read this setting from the environment (DEBUG = os.environ.get("DEBUG") == "1") and keep it off in production.
+
+- id: DOT-SEC-007
+  severity: critical
+  category: code
+  detector:
+    type: hidden-code
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,vue,svelte,py,json,sh}"]
+    exclude: ["**/*.min.js", "**/*.map", "**/package-lock.json"]
+    minSpaces: 150
+  text:
+    fr:
+      title: Code caché en fin de ligne
+      explanation: Du code est placé après des centaines d'espaces, invisible dans ton éditeur. C'est la signature des faux projets « starter » piégés ; un fichier de config comme postcss.config.mjs est exécuté dès « npm run dev ».
+      fix: "N'exécute pas ce projet (ni npm install, ni npm run dev). Supprime cette fin de ligne, vérifie l'historique git, et si tu l'as déjà lancé : change tes mots de passe, clés et jetons depuis une autre machine."
+    en:
+      title: Code hidden at the end of a line
+      explanation: Code sits after hundreds of spaces, invisible in your editor. This is the signature of booby-trapped fake "starter" projects; a config file such as postcss.config.mjs runs as soon as you "npm run dev".
+      fix: "Do not run this project (no npm install, no npm run dev). Remove the end of that line, check the git history, and if you already ran it: change your passwords, keys and tokens from another machine."

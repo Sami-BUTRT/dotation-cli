@@ -1,0 +1,56 @@
+# Release: a tag cli-vX.Y.Z (same version as package.json) publishes a GitHub release with
+# dotation-X.Y.Z.tgz, dotation.tgz (stable "latest" URL) and SHA256SUMS.
+# Install: npm install -g https://github.com/Sami-BUTRT/dotation-cli/releases/latest/download/dotation.tgz
+name: cli-release
+
+on:
+  push:
+    tags: ["cli-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # build provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Tag version = package version
+        run: test "cli-v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - name: Types, lint, tests
+        run: |
+          set -euo pipefail
+          npx --yes npm@11.6.2 ci --no-fund
+          npm audit --omit=dev --audit-level=high
+          npm run check
+      - name: Package
+        run: npx --yes npm@11.6.2 run pack:release
+      - name: The package installs without the npm registry and works
+        run: |
+          set -euo pipefail
+          npm install -g --prefix "$RUNNER_TEMP/p" --registry http://127.0.0.1:9/ --no-audit --no-fund ./release/dotation.tgz
+          test "$("$RUNNER_TEMP/p/bin/dotation" --version)" = "${GITHUB_REF_NAME#cli-v}"
+          "$RUNNER_TEMP/p/bin/dotation" scan fixtures/clean-app --fail-on low
+      # Build provenance (gh attestation verify): available for a public repository.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ !github.event.repository.private }}
+        with:
+          subject-path: release/dotation-*.tgz
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#cli-v}"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "dotation CLI $V" --verify-tag \
+            --notes "Install or update: \`npm install -g https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/dotation-$V.tgz\` (Node.js 22.12+). Checksums: SHA256SUMS." \
+            release/dotation-"$V".tgz release/dotation.tgz release/SHA256SUMS
