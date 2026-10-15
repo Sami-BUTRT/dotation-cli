@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { hasCommand, run } from "../core/exec.js";
 import type { Finding, Severity } from "../core/finding.js";
+import { ENGINE_REFS } from "../core/refs.js";
 import type { Messages } from "../i18n/index.js";
 import { type Engine, result, shortError } from "./engine.js";
 
@@ -111,6 +112,7 @@ export function parseOsv(json: string, root: string, msg: Messages): Finding[] {
         file,
         line: 0,
         snippet: `${p.package.ecosystem} ${p.package.name}@${p.package.version}`,
+        refs: [...ENGINE_REFS.osv],
       });
     }
   }

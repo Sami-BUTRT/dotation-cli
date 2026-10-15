@@ -1,8 +1,5 @@
 import type { EngineId, Severity } from "../core/finding.js";
 
-export const LANGS = ["fr", "en", "es", "zh"] as const;
-export type Lang = (typeof LANGS)[number];
-
 export interface Texts {
   title: string;
   explanation: string;
@@ -20,6 +17,8 @@ export interface Messages {
     more: (hidden: number) => string;
     why: string;
     fix: string;
+    refs: string;
+    projectRule: string;
     engines: string;
     engineOk: (count: number) => string;
     engineMissing: (hint: string) => string;
@@ -28,6 +27,12 @@ export interface Messages {
     engineTimeout: (seconds: number) => string;
     failOn: (threshold: string) => string;
     noFiles: string;
+    suppressed: (ignored: number, disabled: number, overridden: string[]) => string;
+    protectedRejected: (ids: string[]) => string;
+    baselineHidden: (n: number, file: string) => string;
+    baselineInvalid: (reason: string, file: string) => string;
+    projectTooLarge: string;
+    ruleFileSkipped: (file: string, reason: string) => string;
   };
   engineNames: Record<EngineId, string>;
   install: { gitleaks: string; semgrep: string; osv: string };
@@ -39,12 +44,19 @@ export interface Messages {
     dbMissing: string;
     dbStale: (days: number) => string;
   };
+  banner: { project: string; plan: string; planFree: string; planPro: string; planProUnknown: string };
   cli: {
     description: string;
     scan: string;
     init: string;
     mcp: string;
     updateDb: string;
+    sbom: string;
+    sbomWritten: (path: string, count: number) => string;
+    baseline: string;
+    baselineWritten: (path: string, count: number) => string;
+    baselineUnsafe: (path: string) => string;
+    baselineIncomplete: (engines: string) => string;
     notGit: string;
     badPath: (path: string) => string;
     initWrote: (path: string) => string;

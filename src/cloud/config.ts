@@ -33,6 +33,8 @@ export interface Credentials {
   token: string;
   scopes: string[];
   createdAt: string;
+  /** Plan vu au dernier `dotation whoami` (cache local, sert à l'en-tête). */
+  plan?: string;
 }
 
 /** Fichier des identifiants : $XDG_CONFIG_HOME/dotation/credentials.json (dossier 700, fichier 600). */
@@ -66,6 +68,7 @@ export async function loadCredentials(env: NodeJS.ProcessEnv = process.env): Pro
     token: c.token,
     scopes: Array.isArray(c.scopes) ? c.scopes : [],
     createdAt: c.createdAt ?? "",
+    ...(typeof c.plan === "string" ? { plan: c.plan } : {}),
   };
 }
 

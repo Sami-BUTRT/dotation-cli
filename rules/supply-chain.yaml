@@ -1,0 +1,75 @@
+# Chaîne d'approvisionnement des dépendances (OWASP A03:2025, Software Component Verification Standard).
+
+- id: DOT-DEP-001
+  severity: medium
+  category: dependency
+  refs: [A03:2025, A08:2025, CWE-1357]
+  detector:
+    type: missing-sibling
+    files: ["package.json"]
+    fileMustMatch: '"(?:dependencies|devDependencies)"\s*:\s*\{\s*"'
+    siblings: ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"]
+  text:
+    en:
+      title: JavaScript dependencies without a lockfile
+      explanation: Without package-lock.json (or yarn.lock, pnpm-lock.yaml), every install takes the newest allowed versions; a trapped version published this morning reaches production unnoticed.
+      fix: "Run npm install (or pnpm / yarn) once and commit the lockfile it creates; in CI and deploys, use npm ci, which follows the lockfile."
+
+- id: DOT-DEP-002
+  severity: medium
+  category: dependency
+  refs: [A03:2025, A08:2025, CWE-1357]
+  detector:
+    type: missing-sibling
+    files: ["pyproject.toml"]
+    fileMustMatch: '^\s*dependencies\s*=\s*\[\s*["'']|^\[tool\.poetry\.dependencies\]\s*$'
+    siblings: ["poetry.lock", "uv.lock", "pdm.lock", "Pipfile.lock", "requirements.txt", "requirements.lock"]
+  text:
+    en:
+      title: Python dependencies without a lockfile
+      explanation: Without a lock file, each install can pick a different version of your dependencies, trapped ones included.
+      fix: "Generate and commit a lockfile: uv lock, poetry lock, or pip-compile into requirements.txt with pinned versions (package==1.2.3)."
+
+- id: DOT-DEP-003
+  severity: medium
+  category: dependency
+  refs: [A03:2025, A08:2025, CWE-1357]
+  detector:
+    type: regex
+    files: ["**/package.json"]
+    pattern: '^\s*"(?:@[\w.-]+/)?[\w.-]+"\s*:\s*"(?:\*|latest|x|next)"\s*,?\s*$'
+    ignoreIf: ['^\s*"(?:version|name|main|type|license)"\s*:']
+    # Monorepo npm : « * » y désigne un paquet du dépôt (workspace), pas une version du registre.
+    unlessFile: ['"workspaces"\s*:']
+  text:
+    en:
+      title: Dependency without a version ("*" or "latest")
+      explanation: '"*" and "latest" accept any future version, including a breaking major release or a package taken over by someone malicious.'
+      fix: "Use a precise range (\"^4.18.2\") and commit the lockfile; npm install package@version writes it for you."
+
+- id: DOT-DEP-004
+  severity: low
+  category: dependency
+  refs: [A03:2025, CWE-1357]
+  detector:
+    type: regex
+    files: ["**/requirements.txt", "**/requirements-*.txt", "**/requirements/*.txt"]
+    pattern: '^[A-Za-z0-9][\w.-]*(?:\[[\w,.\s-]+\])?\s*(?:;[^#]*)?(?:#.*)?$'
+  text:
+    en:
+      title: Python dependency without a pinned version
+      explanation: Without "==", pip installs whatever is newest at deploy time; two servers may not run the same code.
+      fix: "Pin each line (requests==2.32.3), for instance with pip-compile or uv pip compile from a requirements.in."
+
+- id: DOT-DEP-005
+  severity: high
+  category: dependency
+  refs: [A03:2025, A08:2025, CWE-1357]
+  detector:
+    type: lookalike-package
+    files: ["**/package.json", "**/requirements.txt", "**/requirements-*.txt", "**/requirements/*.txt", "**/pyproject.toml"]
+  text:
+    en:
+      title: "Dependency \"{name}\" looks like a very popular package"
+      explanation: "\"{name}\" looks a lot like {similar}, which are very widely used, without being one of them. That is typical of a typo, a name invented by an AI, or a booby-trapped package imitating a real one (slopsquatting): check that it is the one you meant."
+      fix: "Look \"{name}\" up on npmjs.com or pypi.org (author, age, downloads). If you meant {similar}, fix the name; if the package is intended, ignore this finding. A lockfile does not prove a package is legitimate."

@@ -15,7 +15,7 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
 "${NPM[@]}" run -s build
-cp -r package.json README.md README.fr.md LICENSE dist rules engines skills "$STAGE/"
+cp -r package.json README.md LICENSE dist rules engines skills data "$STAGE/"
 cp package-lock.json "$STAGE/package-lock.json"
 # Rien à exécuter à l'installation, et pas de publication accidentelle sur le registre npm (« private »).
 node -e '

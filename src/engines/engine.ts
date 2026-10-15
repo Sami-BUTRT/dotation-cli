@@ -1,7 +1,7 @@
 import type { Config } from "../core/config.js";
 import type { FileSet, Scope } from "../core/files.js";
 import type { EngineId, Finding } from "../core/finding.js";
-import type { Lang, Messages } from "../i18n/index.js";
+import type { Messages } from "../i18n/index.js";
 
 export interface ScanContext {
   /** Dossier analysé (absolu). */
@@ -9,12 +9,13 @@ export interface ScanContext {
   fileSet: FileSet;
   scope: Scope;
   staged: boolean;
-  lang: Lang;
   msg: Messages;
   config: Config;
   timeoutMs: number;
-  /** Dossiers de règles maison supplémentaires (ex. .dotation/rules du projet). */
+  /** Dossiers de règles maison supplémentaires et vérifiés (packs installés). */
   extraRuleDirs: string[];
+  /** Règles du projet (.dotation/rules) : écrites par l'auteur du dépôt, donc sans confiance. */
+  projectRuleDir?: string;
 }
 
 export type EngineState = "ok" | "missing" | "disabled" | "failed" | "timeout";
@@ -27,9 +28,19 @@ export interface EngineStatus {
   detail?: string;
 }
 
+/** Ce que les règles du projet (.dotation/rules) ont changé ou n'ont pas pu changer, remonté par le moteur maison. */
+export interface RuleNotices {
+  overridden: string[];
+  protectedRejected: string[];
+  skippedFiles: { file: string; reason: string }[];
+  /** Liste du projet trop grande : conditions évaluées sur les fichiers scannés seulement. */
+  projectTooLarge?: boolean;
+}
+
 export interface EngineResult {
   status: EngineStatus;
   findings: Finding[];
+  ruleNotices?: RuleNotices;
 }
 
 export interface Engine {

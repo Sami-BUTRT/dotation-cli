@@ -1,0 +1,114 @@
+# Intégrité des données, cryptographie et authentification (OWASP A04, A07, A08:2025 ; API3, API10:2023).
+
+- id: DOT-INT-001
+  severity: high
+  category: code
+  refs: [A08:2025, API10:2023, CWE-345]
+  detector:
+    type: regex
+    files: ["**/*.{ts,js,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*", "**/*.d.ts"]
+    fileMustMatch: ['\bstripe\b|\bStripe\b', '\b(?:req|request)\b']
+    pattern: '["''](?:checkout\.session\.completed|invoice\.(?:paid|payment_succeeded)|customer\.subscription\.(?:created|updated|deleted)|payment_intent\.succeeded)["'']'
+    unlessFile: ['constructEvent|construct_event|webhooks\.verify|verifyHeader|verify_header|[Ss]tripe-[Ss]ignature|STRIPE_WEBHOOK_SECRET']
+    firstOnly: true
+  text:
+    en:
+      title: Stripe webhook handled without checking the signature
+      explanation: Without verification, anyone can send a fake "payment succeeded" to this address and unlock a subscription or an order without paying.
+      fix: "Verify each call with the raw body: stripe.webhooks.constructEvent(await req.text(), req.headers.get('stripe-signature'), process.env.STRIPE_WEBHOOK_SECRET)."
+
+- id: DOT-AUTH-001
+  severity: high
+  category: code
+  refs: [A07:2025, A04:2025, CWE-347]
+  detector:
+    type: regex
+    files: ["**/*.{ts,js,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*", "**/test_*.py"]
+    pattern: '\bjwt\.decode\([^)\n]*(?:["'']verify_signature["'']\s*:\s*False|\bverify\s*=\s*False)|\balgorithms\s*[:=]\s*\[[^\]\n]*["''](?:none|None)["'']|\bignoreExpiration\s*:\s*true\b'
+  text:
+    en:
+      title: JWT verification turned off
+      explanation: A token whose signature (or expiry) isn't checked can be forged or replayed by anyone, with any identity they like, admin included.
+      fix: "Always verify the signature with a fixed algorithm and keep expiry on: jwt.verify(token, secret, { algorithms: ['HS256'] }) or jwt.decode(token, key, algorithms=['HS256'])."
+
+- id: DOT-AUTH-002
+  severity: medium
+  category: code
+  refs: [A07:2025, A04:2025, CWE-347]
+  detector:
+    type: regex
+    files: ["**/*.{ts,js,mjs,cjs}"]
+    exclude: ["**/*.test.*", "**/*.spec.*", "**/*.d.ts"]
+    pattern: '\b(?:jwt\.decode|jwtDecode|decodeJwt)\('
+    unlessFile: ['^\s*["'']use client["'']', '\b(?:jwt\.verify|jwtVerify|verifyJwt|verifyToken|verifyIdToken|getToken|auth\.verify\w*)\(']
+    firstOnly: true
+  text:
+    en:
+      title: JWT read without verification on the server
+      explanation: decode reads the token's content without checking the signature. If your server uses it to know who's calling, anyone can write a token in any name.
+      fix: "On the server, use verification: jwt.verify(token, secret, { algorithms: ['HS256'] }) (jsonwebtoken) or jwtVerify(token, key) (jose)."
+
+- id: DOT-CRY-001
+  severity: medium
+  category: code
+  refs: [A04:2025, CWE-338]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    flags: i
+    pattern: '\b\w*(?:token|secret|password|passwd|otp|nonce|salt|api_?key|session_?id|reset_?code|verification_?code|invite_?code|magic_?link)\w*\s*[:=][^;\n]*(?:Math\.random\(|\brandom\.(?:random|randint|choice|choices|getrandbits)\()'
+  text:
+    en:
+      title: Secret value drawn from predictable randomness
+      explanation: Math.random and Python's random module aren't built for security; the next values can be guessed, and with them a reset token or a code.
+      fix: "Use a cryptographic generator: crypto.randomBytes(32).toString('base64url') or crypto.randomUUID() (Node), secrets.token_urlsafe(32) (Python)."
+
+- id: DOT-CRY-002
+  severity: high
+  category: code
+  refs: [A04:2025, A07:2025, CWE-916]
+  detector:
+    type: regex
+    files: ["**/*.{ts,js,mjs,cjs,py,php}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    flags: i
+    pattern: 'createHash\(\s*["''](?:md5|sha1|sha256|sha512)["'']\s*\)\s*\.update\(\s*[\w.]*(?:password|passwd|pwd)|\bhashlib\.(?:md5|sha1|sha256|sha512)\(\s*[\w.]*(?:password|passwd|pwd)|\b(?:md5|sha1)\(\s*\$?[\w.]*(?:password|passwd|pwd)'
+  text:
+    en:
+      title: Password hashed with a fast algorithm
+      explanation: MD5, SHA-1 and even SHA-256 run billions of times per second; if your database leaks, most passwords are cracked within hours.
+      fix: "Use a function built for it: argon2 (argon2id), bcrypt or scrypt, from your language's library (e.g. await argon2.hash(password))."
+
+- id: DOT-INT-002
+  severity: medium
+  category: access
+  refs: [A08:2025, API3:2023, CWE-915]
+  detector:
+    type: regex
+    files: ["**/*.{ts,js,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\bdata\s*:\s*(?:req\.body|await\s+req(?:uest)?\.json\(\)|Object\.fromEntries\(\s*(?:await\s+)?\w*[fF]orm[dD]ata\b)\s*[,}]|\.(?:insert|update|upsert)\(\s*(?:req\.body|await\s+req(?:uest)?\.json\(\))\s*\)|\bObject\.assign\(\s*\w+\s*,\s*req\.body\s*\)|\bnew\s+[A-Z]\w*\(\s*req\.body\s*\)|\.(?:findByIdAndUpdate|findOneAndUpdate|updateOne)\([^,\n]+,\s*req\.body\s*[,)]|\b[A-Z]\w*\(\s*\*\*\s*request\.(?:json|form|get_json\(\))'
+  text:
+    en:
+      title: Object saved straight from the request (mass assignment)
+      explanation: Every field sent is copied to the database. A user can add role=admin, plan=pro or userId=someone else to their request.
+      fix: "Pick allowed fields one by one (or validate with a strict zod / pydantic schema): data: { name: body.name, bio: body.bio }."
+
+- id: DOT-AUTH-003
+  severity: low
+  category: code
+  refs: [A07:2025, CWE-922]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,vue,svelte}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    flags: i
+    pattern: '\blocalStorage\.setItem\(\s*["''`][^"''`]*(?:token|jwt|session|auth)[^"''`]*["''`]'
+  text:
+    en:
+      title: Login token stored in localStorage
+      explanation: Any script on the page (compromised dependency, XSS) can read localStorage and walk away with the token, hence the session.
+      fix: "Keep the session in an HttpOnly, Secure, SameSite=Lax cookie set by the server; the page's JavaScript doesn't need to read it."

@@ -1,0 +1,6 @@
+# Fixture dotation : base publiée sur toutes les interfaces. Ne pas corriger.
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"

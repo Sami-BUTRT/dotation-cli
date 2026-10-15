@@ -2,7 +2,8 @@ import { hasCommand, run } from "../core/exec.js";
 import { DEFAULT_EXCLUDES } from "../core/files.js";
 import { type Finding, isSeverity, type Severity } from "../core/finding.js";
 import { truncate } from "../core/mask.js";
-import { type Lang, pick, type Texts } from "../i18n/index.js";
+import { isRef } from "../core/refs.js";
+import type { Texts } from "../i18n/index.js";
 import { packagePath } from "../paths.js";
 import { type Engine, result, shortError } from "./engine.js";
 
@@ -17,7 +18,9 @@ interface SemgrepResult {
     severity?: string;
     message?: string;
     lines?: string;
-    metadata?: { dotation?: { severity?: string; category?: string } & Partial<Record<Lang, Texts>> };
+    metadata?: {
+      dotation?: { severity?: string; category?: string; refs?: unknown } & { en?: Texts };
+    };
   };
 }
 
@@ -33,11 +36,16 @@ export function semgrepEnv(): NodeJS.ProcessEnv {
   return { ...process.env, ...SEMGREP_ENV };
 }
 
-export function parseSemgrep(json: string, lang: Lang): Finding[] {
+function refsOf(v: unknown): { refs?: string[] } {
+  const refs = Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && isRef(x)) : [];
+  return refs.length > 0 ? { refs } : {};
+}
+
+export function parseSemgrep(json: string): Finding[] {
   const data = JSON.parse(json) as { results?: SemgrepResult[] };
   return (data.results ?? []).map((r) => {
     const meta = r.extra.metadata?.dotation ?? {};
-    const texts = pick(meta as Partial<Record<Lang, Texts>>, lang);
+    const texts = (meta as { en?: Texts }).en;
     const sev =
       meta.severity && isSeverity(meta.severity)
         ? meta.severity
@@ -55,6 +63,7 @@ export function parseSemgrep(json: string, lang: Lang): Finding[] {
       file: r.path.replace(/^\.\//, ""),
       line: r.start.line,
       snippet: truncate((lines.split("\n")[0] ?? "").trim()),
+      ...refsOf(meta.refs),
     };
   });
 }
@@ -103,7 +112,7 @@ export const semgrepEngine: Engine = {
     const errors = (JSON.parse(r.stdout || "{}") as { errors?: { level?: string; message?: string }[] }).errors ?? [];
     const fatal = errors.find((e) => e.level === "error" && /config|YAML|rule/i.test(e.message ?? ""));
     if (fatal) return result("semgrep", "failed", [], shortError(fatal.message ?? ""));
-    const findings = parseSemgrep(r.stdout, ctx.lang);
+    const findings = parseSemgrep(r.stdout);
     // Semgrep OSS n'envoie plus la ligne sans connexion à son service : on la relit dans nos fichiers.
     const files = new Map(ctx.fileSet.files.map((f) => [f.path, f]));
     const texts = new Map<string, string | null>();

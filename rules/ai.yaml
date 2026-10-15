@@ -1,0 +1,94 @@
+# Applications qui appellent un modèle d'IA (OWASP Top 10 for LLM Applications 2025).
+# Les règles ne s'appliquent qu'aux fichiers qui importent un SDK d'IA, sauf la clé publique (DOT-AI-001).
+
+- id: DOT-AI-001
+  severity: critical
+  category: secret
+  refs: [LLM02:2025, LLM10:2025, A02:2025, NHI2:2025, CWE-200]
+  detector:
+    type: regex
+    files: ["**/.env*", "**/*.{js,jsx,ts,tsx,mjs,cjs,vue,svelte,astro}"]
+    pattern: '\b(?:NEXT_PUBLIC|VITE|EXPO_PUBLIC|REACT_APP|NUXT_PUBLIC|PUBLIC|GATSBY)_[A-Z0-9_]*(?:OPENAI|ANTHROPIC|CLAUDE|MISTRAL|GROQ|GEMINI|GOOGLE_AI|GOOGLE_GENAI|COHERE|DEEPSEEK|PERPLEXITY|REPLICATE|TOGETHER|OPENROUTER|XAI|HUGGINGFACE|HF|FIREWORKS|ELEVENLABS)[A-Z0-9_]*(?:KEY|TOKEN)\b'
+  text:
+    en:
+      title: AI key in a public variable
+      explanation: NEXT_PUBLIC_, VITE_… variables are copied into the code shipped to the browser. Anyone can read your key and run their own model calls on your bill.
+      fix: "Revoke the key with the provider, create a new one without a public prefix (OPENAI_API_KEY), and call the model from your server (API route, Server Action), never from the browser."
+
+- id: DOT-AI-002
+  severity: high
+  category: config
+  refs: [LLM02:2025, LLM10:2025, A02:2025, CWE-522]
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,vue,svelte,astro}"]
+    pattern: '\bdangerouslyAllowBrowser\s*:\s*true\b'
+  text:
+    en:
+      title: AI SDK allowed in the browser
+      explanation: With dangerouslyAllowBrowser, the API key ships to every visitor's browser; it will be copied and used at your expense.
+      fix: Remove this option and route calls through your server, which keeps the key and limits what each user can ask for.
+
+- id: DOT-AI-003
+  severity: high
+  category: code
+  refs: [LLM05:2025, A05:2025, CWE-79]
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,vue,svelte}"]
+    fileMustMatch: '(?:from\s+|require\()["''](?:openai|@anthropic-ai/sdk|@mistralai/mistralai|@google/generative-ai|@google/genai|groq-sdk|cohere-ai|ollama|ai|ai/[\w-]+|@ai-sdk/[\w-]+|langchain|@langchain/[\w-]+|replicate|together-ai)["'']'
+    pattern: 'dangerouslySetInnerHTML=\{\{\s*__html:\s*(?![\s"''`])|\.innerHTML\s*=\s*(?![\s"''`])|\bv-html=|\{@html\s'
+    ignoreIf: ['DOMPurify|sanitize|purify|escapeHtml']
+  text:
+    en:
+      title: AI answer inserted as HTML
+      explanation: The model's text can contain HTML or a script, for instance if someone slipped instructions into a page or a document it read. Inserted as is, it runs in your user's browser (XSS).
+      fix: "Render the answer as text ({message.content}), or through a Markdown renderer that strips HTML (react-markdown without rehype-raw, or DOMPurify.sanitize)."
+
+- id: DOT-AI-004
+  severity: critical
+  category: code
+  refs: [LLM05:2025, LLM06:2025, A05:2025, CWE-94]
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    fileMustMatch: '(?:from\s+|require\()["''](?:openai|@anthropic-ai/sdk|@mistralai/mistralai|@google/generative-ai|@google/genai|groq-sdk|cohere-ai|ollama|ai|ai/[\w-]+|@ai-sdk/[\w-]+|langchain|@langchain/[\w-]+|replicate|together-ai)["'']|^\s*(?:from|import)\s+(?:openai|anthropic|mistralai|google\.generativeai|google\.genai|groq|cohere|ollama|langchain\w*|litellm)\b'
+    pattern: '(?<![\w.])(?:eval|exec|execSync|spawn|spawnSync)\(|\bnew\s+Function\(|\bvm\.runIn\w+\(|\bsubprocess\.(?:run|call|Popen|check_output|check_call)\(|\bos\.(?:system|popen)\('
+  text:
+    en:
+      title: Code or command run in a file that calls an AI model
+      explanation: If the model's answer (or a tool it drives) ends up in eval, exec or a shell command, a well-crafted text in a document or a message is enough to run code on your server.
+      fix: "Never execute model output. For an agent, give it closed actions (a precise tool list, validated parameters), no shell, and ask a human to confirm anything that writes or deletes."
+
+- id: DOT-AI-005
+  severity: medium
+  category: code
+  refs: [LLM01:2025, LLM07:2025, CWE-1427]
+  detector:
+    type: regex
+    files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,py}"]
+    fileMustMatch: '(?:from\s+|require\()["''](?:openai|@anthropic-ai/sdk|@mistralai/mistralai|@google/generative-ai|@google/genai|groq-sdk|cohere-ai|ollama|ai|ai/[\w-]+|@ai-sdk/[\w-]+|langchain|@langchain/[\w-]+|replicate|together-ai)["'']|^\s*(?:from|import)\s+(?:openai|anthropic|mistralai|google\.generativeai|google\.genai|groq|cohere|ollama|langchain\w*|litellm)\b'
+    pattern: '(?:role\s*:\s*["'']system["'']\s*,\s*content\s*:|\bsystem(?:Prompt|_prompt|Instruction|_instruction)?\s*[:=])\s*`[^`]*\$\{\s*(?:req|request|body|input|userInput|user_input|query|params|message|prompt|args|searchParams)\b|["'']role["'']\s*:\s*["'']system["'']\s*,\s*["'']content["'']\s*:\s*f["''][^"'']*\{\s*(?:request|body|user_input|query|message|prompt|data)\b|\bsystem(?:_prompt|_instruction)?\s*=\s*f["''][^"'']*\{\s*(?:request|body|user_input|query|message|prompt|data)\b'
+  text:
+    en:
+      title: User input in the system message
+      explanation: The system message sets the model's rules. Putting user text in it lets them rewrite those rules ("ignore your instructions…") and sometimes leak your prompt.
+      fix: "Keep the system message fixed and put the input in a separate \"user\" message, delimited and size-limited. Never put secrets or access rules in the prompt."
+
+- id: DOT-AI-006
+  severity: low
+  category: code
+  refs: [LLM10:2025, API4:2023, CWE-770]
+  detector:
+    type: regex
+    files: ["**/*.{js,ts,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\.(?:chat\.completions|completions|responses)\.create\(|\b(?:generateText|streamText|generateObject|streamObject)\(|\.chat\.complete\(|\.chat\.stream\('
+    unlessFile: ['\b(?:max_tokens|maxTokens|max_output_tokens|maxOutputTokens|max_completion_tokens|maxCompletionTokens)\b']
+    firstOnly: true
+  text:
+    en:
+      title: Model call without a length limit
+      explanation: Without a token cap, a single request (or a looping bot) can produce huge answers and run up your bill.
+      fix: "Set max_tokens (or maxOutputTokens) to what you need, and limit calls per user per minute on the server."

@@ -9,7 +9,8 @@ import { pollDevice, startDevice } from "../cloud/device.js";
 import { explain, snippetAround } from "../cloud/explain.js";
 import { updatePacks } from "../cloud/rulepacks.js";
 import { buildPayload, upload } from "../cloud/upload.js";
-import { detectLang, type Messages } from "../i18n/index.js";
+import { safeText } from "../core/terminal.js";
+import type { Messages } from "../i18n/index.js";
 import { type ScanReport, scan } from "../scan.js";
 
 const EXIT_ERROR = 2;
@@ -113,9 +114,7 @@ export function cloudCommands(program: Command, m: Messages, h: Messages = m): v
       const c = await loadCredentials().catch(() => null);
       if (await deleteCredentials()) {
         process.stdout.write(`${m.cloud.logoutDone(credentialsPath())}\n`);
-        process.stdout.write(
-          `${m.cloud.logoutRevoke(`${siteUrl(c?.apiUrl ?? apiUrl())}/${detectLang() === "fr" ? "fr" : "en"}/account`)}\n`,
-        );
+        process.stdout.write(`${m.cloud.logoutRevoke(`${siteUrl(c?.apiUrl ?? apiUrl())}/en/account`)}\n`);
       } else process.stdout.write(`${m.cloud.logoutNone}\n`);
     });
 
@@ -132,6 +131,8 @@ export function cloudCommands(program: Command, m: Messages, h: Messages = m): v
         const me = await request<{ user: { email: string }; via: string }>(c.apiUrl, "/v1/me", { token: c.token });
         const rights = await request<{ plan: string }>(c.apiUrl, "/v1/entitlements", { token: c.token });
         process.stdout.write(`${m.cloud.whoamiLine(me.user.email, rights.plan, c.apiUrl)}\n`);
+        if (!process.env.DOTATION_TOKEN)
+          await saveCredentials({ ...c, plan: /pro/i.test(rights.plan) ? "pro" : "free" }).catch(() => undefined);
       } catch (e) {
         process.exitCode = reportCloudError(e, m, c.apiUrl);
       }
@@ -184,8 +185,7 @@ export function cloudCommands(program: Command, m: Messages, h: Messages = m): v
         process.exitCode = EXIT_ERROR;
         return;
       }
-      const lang = detectLang() === "fr" ? "fr" : "en";
-      const report = await scan(resolve(t.file), { lang: detectLang() });
+      const report = await scan(resolve(t.file));
       const finding = report.findings.find((f) => f.line === t.line);
       if (!finding) {
         err(m.cloud.explainNoFinding(t.file, t.line));
@@ -197,11 +197,8 @@ export function cloudCommands(program: Command, m: Messages, h: Messages = m): v
       const content = await readFile(resolve(t.file), "utf8");
       const snip = snippetAround(content, t.line);
       try {
-        const r = await explain(
-          c.apiUrl,
-          c.token,
-          { finding, snippet: snip.text, fix: flags.fix ?? false, lang },
-          (s) => process.stdout.write(s),
+        const r = await explain(c.apiUrl, c.token, { finding, snippet: snip.text, fix: flags.fix ?? false }, (s) =>
+          process.stdout.write(safeText(s)),
         );
         process.stdout.write("\n");
         err(m.cloud.explainMasked(snip.masked, r.maskedServer));

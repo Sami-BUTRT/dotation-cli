@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "FakeDotationMcpToken0000" }
+    },
+    "docs": { "type": "http", "url": "http://mcp.example.com/mcp" }
+  }
+}

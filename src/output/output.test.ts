@@ -21,7 +21,6 @@ const finding = (i: number, severity: Severity): Finding => ({
 const report = (findings: Finding[]): ScanReport => ({
   root: "/p",
   target: "/p",
-  lang: "fr",
   fileCount: 3,
   findings,
   statuses: [{ engine: "house", state: "ok", count: findings.length }],
@@ -34,18 +33,18 @@ describe("sortie pretty", () => {
     const short = renderPretty(report(many), { all: false, color: false });
     expect(short).toContain(`Problème ${DEFAULT_LIMIT}`);
     expect(short).not.toContain("Problème 11");
-    expect(short).toContain("4 autres");
+    expect(short).toContain("4 more");
     expect(renderPretty(report(many), { all: true, color: false })).toContain("Problème 14");
   });
   it("groupé par sévérité, du plus grave au moins grave, avec le résumé", () => {
     const out = renderPretty(report([finding(1, "critical"), finding(2, "low")]), { all: true, color: false });
-    expect(out.indexOf("CRITIQUE")).toBeLessThan(out.indexOf("FAIBLE"));
-    expect(out).toContain("Pourquoi :");
-    expect(out).toContain("Comment corriger :");
-    expect(out).toContain("Score d'hygiène : 50/100");
+    expect(out.indexOf("CRITICAL")).toBeLessThan(out.indexOf("LOW"));
+    expect(out).toContain("Why:");
+    expect(out).toContain("How to fix:");
+    expect(out).toContain("Hygiene score: 50/100");
   });
   it("projet propre : message positif", () => {
-    expect(renderPretty({ ...report([]), score: 100 }, { all: false, color: false })).toContain("Rien à signaler");
+    expect(renderPretty({ ...report([]), score: 100 }, { all: false, color: false })).toContain("Nothing to report");
   });
   it("sans couleurs : aucun code ANSI", () => {
     expect(renderPretty(report([finding(1, "high")]), { all: false, color: false })).not.toMatch(/\[\d+m/);
@@ -74,5 +73,20 @@ describe("sortie SARIF", () => {
     // Ligne 0 (fichier entier) : pas de région, GitHub refuse startLine 0.
     expect(run?.results[2]?.locations[0]?.physicalLocation).not.toHaveProperty("region");
     for (const r of run?.results ?? []) expect(r.ruleIndex).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("références OWASP et CWE", () => {
+  const f: Finding = { ...finding(1, "high"), refs: ["A05:2025", "CWE-79"] };
+  it("affichées sous le constat", () => {
+    expect(renderPretty(report([f]), { all: true, color: false })).toContain("References: A05:2025 · CWE-79");
+  });
+  it("SARIF : étiquettes GitHub et liens", () => {
+    const rule = toSarif(report([f])).runs[0]?.tool.driver.rules[0];
+    expect(rule?.properties.tags).toEqual(["security", "code", "house", "owasp/A05:2025", "external/cwe/cwe-079"]);
+    expect(rule?.help.markdown).toContain("[CWE-79](https://cwe.mitre.org/data/definitions/79.html)");
+  });
+  it("JSON : présentes telles quelles", () => {
+    expect(JSON.parse(renderJson(report([f]))).findings[0].refs).toEqual(["A05:2025", "CWE-79"]);
   });
 });

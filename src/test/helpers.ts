@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterAll } from "vitest";
 import { packagePath } from "../paths.js";
 
@@ -55,10 +55,11 @@ export const FAKE_SECRETS = [
   "FakeFixtureDbPass99",
   "FakeFixturePass42",
   "fake-fixture-jwt-secret",
+  "FakeDotationMcpToken0000",
 ];
 
 /** PATH sans les outils externes : simule une machine où Gitleaks, Semgrep et OSV-Scanner sont absents. */
 export function pathWithoutEngines(): string {
-  const node = process.execPath.replace(/\/node$/, "");
-  return ["/usr/bin", "/bin", node].join(":");
+  // dirname : l'exécutable ne s'appelle pas toujours « node » (Fedora : /usr/bin/node-22).
+  return ["/usr/bin", "/bin", dirname(process.execPath)].join(":");
 }

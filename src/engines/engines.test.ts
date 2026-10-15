@@ -7,7 +7,7 @@ import { gitleaksEngine, gitleaksSeverity, parseGitleaks, supabaseRole } from ".
 import { compareVersions, cvssToSeverity, osvDbDir, osvEngine, parseOsv } from "./osv.js";
 import { parseSemgrep, semgrepEngine } from "./semgrep.js";
 
-const en = messages("en");
+const en = messages();
 
 describe("Gitleaks : lecture du rapport", () => {
   // Assemblée à l'exécution : écrite d'un bloc, la protection anti-fuite de GitHub la prendrait pour une vraie clé.
@@ -27,6 +27,7 @@ describe("Gitleaks : lecture du rapport", () => {
     expect(f?.snippet).toBe('const key = "sk_live_****WXYZ";');
     expect(f?.file).toBe("src/pay.ts");
     expect(f?.severity).toBe("critical");
+    expect(f?.refs).toEqual(["A07:2025", "NHI2:2025", "CWE-798"]);
   });
   it("sévérité par type de secret", () => {
     expect(gitleaksSeverity("aws-access-token")).toBe("critical");
@@ -68,7 +69,7 @@ describe("Gitleaks : lecture du rapport", () => {
 });
 
 describe("Semgrep : lecture du rapport", () => {
-  it("textes de nos règles dans la langue demandée, repli sur la sévérité Semgrep", () => {
+  it("textes anglais de nos règles, repli sur la sévérité Semgrep", () => {
     const json = JSON.stringify({
       results: [
         {
@@ -79,21 +80,27 @@ describe("Semgrep : lecture du rapport", () => {
             severity: "ERROR",
             lines: "requires login",
             metadata: {
-              dotation: { severity: "critical", fr: { title: "Injection SQL possible", explanation: "e", fix: "f" } },
+              dotation: {
+                severity: "critical",
+                refs: ["A05:2025", "CWE-89", "pas-une-ref"],
+                en: { title: "Possible SQL injection", explanation: "e", fix: "f" },
+              },
             },
           },
         },
         { check_id: "x.other", path: "./a.py", start: { line: 1 }, extra: { severity: "WARNING", message: "msg" } },
       ],
     });
-    const [a, b] = parseSemgrep(json, "fr");
+    const [a, b] = parseSemgrep(json);
     expect(a).toMatchObject({
       id: "semgrep:sql-injection-js",
       severity: "critical",
-      title: "Injection SQL possible",
+      title: "Possible SQL injection",
       snippet: "",
+      refs: ["A05:2025", "CWE-89"],
     });
     expect(b).toMatchObject({ id: "semgrep:other", severity: "medium", title: "msg", file: "a.py" });
+    expect(b?.refs).toBeUndefined();
   });
 });
 
@@ -137,6 +144,7 @@ describe("OSV : lecture du rapport", () => {
       file: "package-lock.json",
       title: "lodash@4.17.15: 2 known vulnerabilities",
       fix: "Update lodash to 4.17.21 or later.",
+      refs: ["A03:2025", "CWE-1395"],
     });
     expect(out[0]?.explanation).toContain("GHSA-p6mc-m468-83gw");
   });
@@ -170,7 +178,7 @@ describe.runIf(await hasCommand("gitleaks", ["version"]))("Gitleaks réel", () =
 describe.runIf(await hasCommand("semgrep", ["--version"]))("Semgrep réel (règles locales)", () => {
   it("trouve injections SQL, commandes, eval, XSS et désérialisation", async () => {
     const repo = await fixtureRepo("vulnerable-app");
-    const r = await scan(repo, { engines: [semgrepEngine], lang: "fr" });
+    const r = await scan(repo, { engines: [semgrepEngine] });
     expect(r.statuses[0]).toMatchObject({ state: "ok" });
     const ids = new Set(r.findings.map((f) => f.id));
     for (const id of [

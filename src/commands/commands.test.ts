@@ -28,18 +28,64 @@ async function cli(args: string[], env: NodeJS.ProcessEnv = {}) {
 describe("CLI (dist/cli.js)", () => {
   const noEngines = { PATH: pathWithoutEngines() };
 
-  it("fixture vulnérable : code retour 1, rapport traduit", async () => {
+  it("sbom : CycloneDX sur la sortie standard ou dans un fichier", async () => {
+    const repo = await fixtureRepo("vulnerable-app");
+    const r = await cli(["sbom", repo]);
+    expect(r.code).toBe(0);
+    const bom = JSON.parse(r.stdout) as { bomFormat: string; components: { purl: string }[] };
+    expect(bom.bomFormat).toBe("CycloneDX");
+    expect(bom.components.map((c) => c.purl)).toContain("pkg:npm/lodash@4.17.15");
+    const out = join(await tempDir(), "bom.json");
+    const w = await cli(["sbom", repo, "-o", out], { DOTATION_LANG: "en" });
+    expect(w.code).toBe(0);
+    expect(w.stderr).toMatch(/SBOM written to .*bom\.json: \d+ components\./);
+  });
+
+  it("fixture vulnérable : code retour 1, rapport en anglais", async () => {
+    const repo = await fixtureRepo("vulnerable-app");
+    const r = await cli(["scan", repo], noEngines);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("Hygiene score: 0/100");
+    expect(r.stdout).toContain("Exit code 1");
+    expect(r.stderr).not.toContain("English-only");
+    for (const s of FAKE_SECRETS) expect(r.stdout).not.toContain(s);
+  });
+
+  it("--lang fr : accepté, ignoré, avis sur stderr, sortie en anglais", async () => {
     const repo = await fixtureRepo("vulnerable-app");
     const r = await cli(["scan", repo, "--lang", "fr"], noEngines);
     expect(r.code).toBe(1);
-    expect(r.stdout).toContain("Score d'hygiène : 0/100");
-    expect(r.stdout).toContain("Code retour 1");
-    for (const s of FAKE_SECRETS) expect(r.stdout).not.toContain(s);
+    expect(r.stderr).toContain("Note: dotation is now English-only; the 'lang' setting is ignored.");
+    expect(r.stderr.split("English-only").length - 1).toBe(1);
+    expect(r.stdout).toContain("Hygiene score: 0/100");
+    expect(r.stdout).not.toContain("English-only");
+  });
+
+  it("DOTATION_LANG=fr : ignoré avec avis ; JSON et SARIF sans avis sur stdout", async () => {
+    const repo = await fixtureRepo("vulnerable-app");
+    const pretty = await cli(["scan", repo], { ...noEngines, DOTATION_LANG: "fr" });
+    expect(pretty.stderr).toContain("Note: dotation is now English-only; the 'lang' setting is ignored.");
+    const json = await cli(["scan", repo, "--format", "json", "--lang", "fr"], noEngines);
+    expect(json.stdout).not.toContain("English-only");
+    expect(JSON.parse(json.stdout).lang).toBe("en");
+    expect(json.stderr).not.toContain("English-only");
+    const sarif = await cli(["scan", repo, "--format", "sarif", "--lang", "fr"], noEngines);
+    expect(sarif.stdout).not.toContain("English-only");
+    expect(() => JSON.parse(sarif.stdout)).not.toThrow();
+  });
+
+  it(".dotation.yml lang: fr : chargé sans erreur, avis, anglais", async () => {
+    const repo = await fixtureRepo("clean-app");
+    await writeFile(join(repo, ".dotation.yml"), "lang: fr\n");
+    const r = await cli(["scan", repo], noEngines);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain("Note: dotation is now English-only; the 'lang' setting is ignored.");
+    expect(r.stdout).toContain("Hygiene score: 100/100");
   });
 
   it("projet propre : code retour 0 et 100/100", async () => {
     const repo = await fixtureRepo("clean-app");
-    const r = await cli(["scan", repo, "--lang", "en"], noEngines);
+    const r = await cli(["scan", repo], noEngines);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("Hygiene score: 100/100");
   });
@@ -75,7 +121,7 @@ describe("CLI (dist/cli.js)", () => {
     await symlink(CLI, bin);
     expect((await exec(process.execPath, [bin, "--version"])).stdout.trim()).toBe(pkg.version);
     // Aide en anglais, même avec une locale française.
-    const help = await cli(["--help"], { LANG: "fr_FR.UTF-8", DOTATION_LANG: "fr" });
+    const help = await cli(["--help"], { LANG: "fr_FR.UTF-8" });
     expect(help.stdout).toContain("Scan a project, a folder or a file");
     expect(help.stdout).toContain("scan");
     expect(help.stdout).toContain("init");
@@ -129,7 +175,7 @@ describe("dotation init", () => {
 
 describe("serveur MCP", () => {
   async function connect() {
-    const server = createServer("fr");
+    const server = createServer();
     const client = new Client({ name: "test", version: "1.0.0" });
     const [a, b] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(a), client.connect(b)]);
@@ -153,7 +199,7 @@ describe("serveur MCP", () => {
   it("scan_project renvoie score et constats, secrets masqués", async () => {
     const repo = await fixtureRepo("vulnerable-app");
     const client = await connect();
-    const res = await client.callTool({ name: "scan_project", arguments: { path: repo, lang: "en" } });
+    const res = await client.callTool({ name: "scan_project", arguments: { path: repo } });
     const text = (res.content as { type: string; text: string }[])[0]?.text ?? "";
     const data = JSON.parse(text) as { score: number; total: number; blocking: number };
     expect(data.score).toBe(0);
@@ -185,8 +231,9 @@ describe("serveur MCP", () => {
   it("explain_rule et list_rules", async () => {
     const client = await connect();
     const ok = await client.callTool({ name: "explain_rule", arguments: { id: "dot-acc-004" } });
-    expect((ok.content as { text: string }[])[0]?.text).toContain("Table Supabase sans RLS");
-    const en = await client.callTool({ name: "explain_rule", arguments: { id: "DOT-ACC-004", lang: "en" } });
+    expect((ok.content as { text: string }[])[0]?.text).toContain("Supabase table without RLS");
+    // Legacy `lang` argument: accepted, ignored.
+    const en = await client.callTool({ name: "explain_rule", arguments: { id: "DOT-ACC-004", lang: "fr" } });
     expect((en.content as { text: string }[])[0]?.text).toContain("Supabase table without RLS");
     const ko = await client.callTool({ name: "explain_rule", arguments: { id: "NOPE" } });
     expect(ko.isError).toBe(true);
