@@ -1,0 +1,16 @@
+# Fixture dotation : workflow vulnérable. Ne pas corriger.
+on:
+  pull_request_target:
+  issues:
+permissions: write-all
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: tj-actions/changed-files@v45
+      - run: |
+          echo "Nouvelle issue : ${{ github.event.issue.title }}"
+          echo "${{ secrets.DEPLOY_TOKEN }}" | base64

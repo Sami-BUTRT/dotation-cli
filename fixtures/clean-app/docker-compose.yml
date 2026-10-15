@@ -1,0 +1,6 @@
+# Fixture dotation : base accessible seulement en local.
+services:
+  db:
+    image: postgres:16.4
+    ports:
+      - "127.0.0.1:5432:5432"

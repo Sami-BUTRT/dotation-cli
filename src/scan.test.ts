@@ -12,7 +12,7 @@ import { FAKE_SECRETS, fixtureRepo, git, pathWithoutEngines, tempDir } from "./t
 describe("critères de réussite", () => {
   it("la fixture vulnérable remonte au moins 10 problèmes différents, expliqués", async () => {
     const repo = await fixtureRepo("vulnerable-app");
-    const r = await scan(repo, { lang: "fr" });
+    const r = await scan(repo);
     const distinct = new Set(r.findings.map((f) => f.id));
     expect(distinct.size).toBeGreaterThanOrEqual(10);
     for (const f of r.findings) {
@@ -40,7 +40,7 @@ describe("critères de réussite", () => {
     });
     it("le scan fonctionne avec les règles maison seules et dit comment installer les moteurs", async () => {
       const repo = await fixtureRepo("vulnerable-app");
-      const r = await scan(repo, { lang: "fr" });
+      const r = await scan(repo);
       expect(r.statuses.map((s) => `${s.engine}:${s.state}`)).toEqual([
         "house:ok",
         "gitleaks:missing",
@@ -122,14 +122,16 @@ describe(".dotation.yml", () => {
   });
 });
 
-describe("langues", () => {
-  it("fr, en ; es et zh avec repli anglais pour les textes non traduits", async () => {
+describe("anglais seulement", () => {
+  it("rapport en anglais ; `lang:` dans .dotation.yml accepté et ignoré", async () => {
     const repo = await fixtureRepo("vulnerable-app");
-    const fr = await scan(repo, { engines: [houseEngine], lang: "fr" });
-    const zh = await scan(repo, { engines: [houseEngine], lang: "zh" });
-    expect(renderPretty(fr, { all: false, color: false })).toContain("Score d'hygiène");
-    const z = renderPretty(zh, { all: false, color: false });
-    expect(z).toContain("卫生评分");
-    expect(zh.findings[0]?.title).toMatch(/[A-Za-z]/); // texte de règle : repli anglais
+    await writeFile(join(repo, ".dotation.yml"), "lang: fr\n");
+    const r = await scan(repo, { engines: [houseEngine] });
+    expect(r.langIgnored).toBe(true);
+    const out = renderPretty(r, { all: false, color: false });
+    expect(out).toContain("Hygiene score");
+    expect(r.findings[0]?.title).toMatch(/[A-Za-z]/);
+    const plain = await scan(await fixtureRepo("clean-app"), { engines: [houseEngine] });
+    expect(plain.langIgnored).toBeUndefined();
   });
 });

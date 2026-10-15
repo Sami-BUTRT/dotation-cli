@@ -21,8 +21,6 @@ engines:
   osv: true
 # Time limit per engine, in seconds
 timeout: 60
-# Report language: en | fr | es | zh
-# lang: en
 `;
 
 export const HOOK_MARKER = "# dotation pre-commit";

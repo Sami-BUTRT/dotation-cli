@@ -1,0 +1,7 @@
+# Fixture dotation : dépendances Python sans lockfile. Ne pas corriger.
+[project]
+name = "vulnerable-api"
+version = "0.0.0"
+dependencies = [
+  "fastapi>=0.100",
+]

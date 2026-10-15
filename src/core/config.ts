@@ -8,7 +8,8 @@ import { SEVERITIES } from "./finding.js";
 export const ConfigSchema = z
   .object({
     failOn: z.enum(SEVERITIES).optional(),
-    lang: z.enum(["fr", "en", "es", "zh"]).optional(),
+    /** Legacy setting: accepted but ignored (the CLI is English-only). */
+    lang: z.string().optional(),
     /** Globs exclus en plus des dossiers par défaut (node_modules, dist…). */
     exclude: z.array(z.string()).default([]),
     /** Règles désactivées (identifiants exacts, ex. DOT-CFG-002 ou gitleaks:generic-api-key). */

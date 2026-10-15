@@ -20,26 +20,31 @@ export interface RunOptions {
  */
 export function run(cmd: string, args: readonly string[], opts: RunOptions = {}): Promise<RunResult> {
   return new Promise((resolve) => {
-    execFile(
-      cmd,
-      [...args],
-      {
-        cwd: opts.cwd,
-        timeout: opts.timeoutMs ?? 60_000,
-        killSignal: "SIGKILL",
-        maxBuffer: opts.maxBuffer ?? 64 * 1024 * 1024,
-        env: opts.env ?? process.env,
-        windowsHide: true,
-        encoding: "utf8",
-      },
-      (err, stdout, stderr) => {
-        if (!err) return resolve({ code: 0, stdout, stderr, timedOut: false });
-        const e = err as NodeJS.ErrnoException & { code?: number | string; killed?: boolean; signal?: string };
-        const timedOut = e.killed === true && e.signal === "SIGKILL";
-        const code = typeof e.code === "number" ? e.code : -1;
-        resolve({ code, stdout: stdout ?? "", stderr: stderr || e.message, timedOut });
-      },
-    );
+    try {
+      execFile(
+        cmd,
+        [...args],
+        {
+          cwd: opts.cwd,
+          timeout: opts.timeoutMs ?? 60_000,
+          killSignal: "SIGKILL",
+          maxBuffer: opts.maxBuffer ?? 64 * 1024 * 1024,
+          env: opts.env ?? process.env,
+          windowsHide: true,
+          encoding: "utf8",
+        },
+        (err, stdout, stderr) => {
+          if (!err) return resolve({ code: 0, stdout, stderr, timedOut: false });
+          const e = err as NodeJS.ErrnoException & { code?: number | string; killed?: boolean; signal?: string };
+          const timedOut = e.killed === true && e.signal === "SIGKILL";
+          const code = typeof e.code === "number" ? e.code : -1;
+          resolve({ code, stdout: stdout ?? "", stderr: stderr || e.message, timedOut });
+        },
+      );
+    } catch (e) {
+      // execFile peut lever tout de suite (ex. ENOTDIR : une entrée du PATH est un fichier).
+      resolve({ code: -1, stdout: "", stderr: e instanceof Error ? e.message : String(e), timedOut: false });
+    }
   });
 }
 

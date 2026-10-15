@@ -1,0 +1,7 @@
+# Fixture dotation : workflow sans bloc permissions. Ne pas corriger.
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm ci && npm test

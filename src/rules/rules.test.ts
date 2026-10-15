@@ -8,13 +8,24 @@ import { gitignoreCovers } from "./detectors.js";
 import { BUILTIN_RULES_DIR, loadRuleDir, loadRules, RuleError } from "./loader.js";
 
 describe("règles livrées", () => {
-  it("se chargent, ont des identifiants uniques et des textes FR et EN complets", async () => {
+  it("se chargent, ont des identifiants uniques et des textes EN complets", async () => {
     const rules = await loadRuleDir(BUILTIN_RULES_DIR);
     expect(rules.length).toBeGreaterThanOrEqual(15);
     expect(new Set(rules.map((r) => r.id)).size).toBe(rules.length);
     for (const r of rules) {
-      expect(r.text.fr, `${r.id} fr`).toBeDefined();
-      expect(r.text.en, `${r.id} en`).toBeDefined();
+      for (const k of ["title", "explanation", "fix"] as const) {
+        expect(r.text.en[k]?.length, `${r.id} en.${k}`).toBeGreaterThan(0);
+      }
+      expect(JSON.stringify(r.text), `${r.id} no fr block`).not.toContain('"fr"');
+      // Au moins une catégorie OWASP et une CWE précise.
+      expect(
+        r.refs.some((x) => !x.startsWith("CWE-")),
+        `${r.id} OWASP`,
+      ).toBe(true);
+      expect(
+        r.refs.some((x) => x.startsWith("CWE-")),
+        `${r.id} CWE`,
+      ).toBe(true);
     }
   });
 
@@ -47,7 +58,7 @@ describe("règles du projet (.dotation/rules)", () => {
   severity: low
   category: code
   detector: { type: regex, files: ["**/*.ts"], pattern: "TODO SECURITE" }
-  text: { fr: { title: À faire, explanation: Note de sécurité oubliée., fix: Traite-la. } }
+  text: { fr: { title: A faire, explanation: Note oubliee., fix: Traite-la. }, en: { title: To do, explanation: Forgotten security note., fix: Handle it. } }
 - id: DOT-ACC-001
   severity: low
   category: access
@@ -56,9 +67,9 @@ describe("règles du projet (.dotation/rules)", () => {
 `,
     );
     await writeFile(join(d, "a.ts"), "// TODO SECURITE : vérifier les droits\napp.use(cors());\n");
-    const report = await scan(d, { engines: [houseEngine], lang: "fr" });
+    const report = await scan(d, { engines: [houseEngine] });
     expect(report.findings.map((f) => f.id)).toEqual(["ACME-TODO-001"]);
-    expect(report.findings[0]?.title).toBe("À faire");
+    expect(report.findings[0]?.title).toBe("To do");
   });
 
   it("une règle invalide est refusée avec un message clair", async () => {
@@ -77,6 +88,34 @@ describe("règles du projet (.dotation/rules)", () => {
     await expect(loadRuleDir(d)).rejects.toThrow(/invalid pattern/);
   });
 
+  it("une règle de projet avec seulement fr est active, texte fr affiché tel quel", async () => {
+    const d = await tempDir();
+    await mkdir(join(d, ".dotation", "rules"), { recursive: true });
+    await writeFile(
+      join(d, ".dotation", "rules", "fr.yaml"),
+      `- id: ACME-FR-001
+  severity: low
+  category: code
+  detector: { type: regex, files: ["**/*.ts"], pattern: "TODO SECURITE" }
+  text: { fr: { title: A faire, explanation: Note oubliee., fix: Traite-la. } }
+`,
+    );
+    await writeFile(join(d, "a.ts"), "// TODO SECURITE\n");
+    const report = await scan(d, { engines: [houseEngine] });
+    expect(report.findings.map((f) => f.id)).toEqual(["ACME-FR-001"]);
+    expect(report.findings[0]?.title).toBe("A faire");
+  });
+
+  it("un pack avec une règle fr seule se charge ; sans en ni fr : erreur", async () => {
+    const d = await tempDir();
+    const head =
+      '- id: ACME-P-001\n  severity: low\n  category: code\n  detector: { type: regex, files: ["*"], pattern: x }\n';
+    await writeFile(join(d, "p.yaml"), `${head}  text: { fr: { title: T, explanation: E, fix: F } }\n`);
+    expect((await loadRuleDir(d))[0]?.text.en.title).toBe("T");
+    await writeFile(join(d, "p.yaml"), `${head}  text: { es: { title: T } }\n`);
+    await expect(loadRuleDir(d)).rejects.toThrow(RuleError);
+  });
+
   it("un dossier absent ne gêne pas", async () => {
     expect(await loadRules(["/dossier/inexistant"])).not.toHaveLength(0);
   });
@@ -85,16 +124,18 @@ describe("règles du projet (.dotation/rules)", () => {
 describe("règles maison sur la fixture vulnérable", () => {
   it("chaque règle livrée se déclenche (dépôt git, .env et clé versionnés)", async () => {
     const repo = await fixtureRepo("vulnerable-app");
-    const report = await scan(repo, { engines: [houseEngine], lang: "en" });
+    const report = await scan(repo, { engines: [houseEngine] });
     const ids = new Set(report.findings.map((f) => f.id));
     const all = (await loadRuleDir(BUILTIN_RULES_DIR)).map((r) => r.id);
-    expect([...all].filter((id) => !ids.has(id))).toEqual([]);
+    // DOT-DEP-001 (lockfile absent) : la fixture garde son package-lock.json pour OSV ; testée dans owasp.test.ts.
+    const elsewhere = new Set(["DOT-DEP-001"]);
+    expect([...all].filter((id) => !ids.has(id) && !elsewhere.has(id))).toEqual([]);
     expect(report.findings.every((f) => f.engine === "house")).toBe(true);
   });
 
   it("emplacements exacts", async () => {
     const repo = await fixtureRepo("vulnerable-app");
-    const report = await scan(repo, { engines: [houseEngine], lang: "fr" });
+    const report = await scan(repo, { engines: [houseEngine] });
     const at = (id: string) => report.findings.filter((f) => f.id === id).map((f) => `${f.file}:${f.line}`);
     expect(at("DOT-ACC-004")).toEqual(["supabase/migrations/0001_init.sql:8"]); // orders, pas profiles ni private.audit
     expect(at("DOT-ACC-005")).toEqual(["firestore.rules:6"]);
@@ -198,7 +239,7 @@ describe("faux positifs trouvés sur de vrais projets", () => {
       `const config = {};\nexport default config;${" ".repeat(507)}${payload}\n`,
     );
     await writeFile(join(d, "ok.ts"), `const s = "${" ".repeat(10)}";\n`);
-    const r = await scan(d, { engines: [houseEngine], lang: "fr" });
+    const r = await scan(d, { engines: [houseEngine] });
     expect(r.findings.map((f) => `${f.id} ${f.file}:${f.line}`)).toEqual(["DOT-SEC-007 postcss.config.mjs:2"]);
     expect(r.findings[0]?.snippet).toContain("507 espaces");
   });

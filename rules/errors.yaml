@@ -1,0 +1,48 @@
+# Erreurs et journaux (OWASP A09:2025 Security Logging and Alerting Failures, A10:2025 Mishandling of Exceptional Conditions).
+
+- id: DOT-ERR-001
+  severity: medium
+  category: code
+  refs: [A10:2025, CWE-209]
+  detector:
+    type: regex
+    files: ["**/*.{ts,js,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\b(?:res|response|reply)\.(?:status\(\d+\)\.)?(?:json|send)\(\s*(?:\{[^}\n]*\b(?:err|error|e|ex|exception)\.stack\b|(?:err|error|e|ex)\s*\))|\b(?:Response|NextResponse)\.json\(\s*\{[^}\n]*\b(?:err|error|e|ex)\.stack\b|\b(?:jsonify|JSONResponse|HttpResponse|PlainTextResponse)\([^)\n]*traceback\.format_exc\(\)'
+  text:
+    en:
+      title: Technical error details sent to the visitor
+      explanation: The stack trace or raw error object reveals your file paths, versions, sometimes an SQL query or a config value; it's a map for attackers.
+      fix: "Log the error on the server and return a generic message with an id: res.status(500).json({ error: 'internal error', id: requestId })."
+
+- id: DOT-ERR-002
+  severity: low
+  category: code
+  refs: [A10:2025, A09:2025, CWE-390]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    flags: i
+    fileMustMatch: '\b(?:stripe|payment|checkout|webhook|auth|login|session|jwt|verify|password|permission|signature)\b'
+    pattern: '\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}|^\s*except(?:\s+[\w.]+(?:\s+as\s+\w+)?)?\s*:\s*pass\s*$'
+  text:
+    en:
+      title: Error silently swallowed in sensitive code
+      explanation: In a payment or an identity check, an ignored error can let through a request that should have been refused, with no trace to understand what happened.
+      fix: "Handle the error: log it, then refuse the action (respond 4xx/5xx or rethrow). Only ignore an error when you know why, with a comment."
+
+- id: DOT-LOG-001
+  severity: medium
+  category: secret
+  refs: [A09:2025, NHI2:2025, CWE-532]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\bconsole\.(?:log|info|debug|warn|error)\([^)\n]*\bprocess\.env\b(?!\.(?:NODE_ENV|PORT|HOST|HOSTNAME|VERCEL_ENV|VERCEL_URL|CI|TZ|LOG_LEVEL|npm_\w+|NEXT_PUBLIC_\w+|VITE_\w+)\b)|\b(?:console\.(?:log|info|debug|warn|error)|print|logger\.\w+|logging\.\w+|log\.\w+)\([^)\n]*[,(]\s*(?:\w+\.)?(?:password|passwd|secret|clientSecret|client_secret|token|accessToken|access_token|refreshToken|refresh_token|apiKey|api_key|authorization|privateKey|private_key)\s*[,)]'
+  text:
+    en:
+      title: Secret written to logs
+      explanation: Logs get copied, kept for long and read by more people (host, monitoring tools) than your database; a password or a key has no place there.
+      fix: "Remove the value from the log; if you need a trace, print a hint only (the last 4 characters) or whether the value is set."

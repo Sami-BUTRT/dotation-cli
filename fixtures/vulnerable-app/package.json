@@ -5,6 +5,8 @@
   "dependencies": {
     "express": "4.17.1",
     "lodash": "4.17.15",
-    "jsonwebtoken": "8.5.1"
+    "jsonwebtoken": "8.5.1",
+    "left-pad": "latest",
+    "expresss": "4.17.1"
   }
 }

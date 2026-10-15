@@ -50,7 +50,7 @@ export interface ExplainResult {
 export async function explain(
   base: string,
   token: string,
-  args: { finding: Finding; snippet: string; fix: boolean; lang: "fr" | "en" },
+  args: { finding: Finding; snippet: string; fix: boolean },
   write: (s: string) => void,
 ): Promise<ExplainResult> {
   const res = await rawRequest(base, "/v1/ai/explain", {
@@ -60,7 +60,7 @@ export async function explain(
     headers: { Accept: "text/event-stream" },
     json: {
       task: args.fix ? "fix" : "explain",
-      lang: args.lang,
+      lang: "en",
       finding: {
         ruleId: args.finding.id,
         severity: args.finding.severity,

@@ -11,6 +11,8 @@ export const en: Messages = {
     more: (n) => `… and ${n} more. Run again with --all to see everything.`,
     why: "Why",
     fix: "How to fix",
+    refs: "References",
+    projectRule: "project rule",
     engines: "Engines",
     engineOk: (n) => `ok (${n} finding${n === 1 ? "" : "s"})`,
     engineMissing: (hint) => `not available. ${hint}`,
@@ -19,6 +21,22 @@ export const en: Messages = {
     engineTimeout: (s) => `stopped after ${s}s (raise --timeout if needed)`,
     failOn: (t) => `Exit code 1: at least one "${t}" or worse issue.`,
     noFiles: "No files to scan here.",
+    protectedRejected: (ids) =>
+      ids.map((id) => `protected rule ${id}: replacement by .dotation/rules was ignored`).join("; "),
+    baselineHidden: (n, file) =>
+      `${n} already known finding${n > 1 ? "s" : ""} hidden by ${file}: use --no-baseline to see everything.`,
+    baselineInvalid: (reason, file) =>
+      `Baseline ${file} ignored (${reason}): all findings are shown. Recreate it with "dotation baseline" if you wrote it.`,
+    projectTooLarge: "project too large: conditions evaluated on the scanned files only",
+    ruleFileSkipped: (file, reason) => `project rules skipped (.dotation/rules/${file}): ${reason}`,
+    suppressed: (ignored, disabled, overridden) => {
+      const parts = [
+        ignored > 0 ? `${ignored} finding${ignored > 1 ? "s" : ""} (dotation-ignore comment)` : "",
+        disabled > 0 ? `${disabled} finding${disabled > 1 ? "s" : ""} (disable in .dotation.yml)` : "",
+        overridden.length > 0 ? `rules replaced by .dotation/rules: ${overridden.join(", ")}` : "",
+      ].filter(Boolean);
+      return `Set aside by the project's settings: ${parts.join("; ")}. If you didn't write these settings yourself (cloned project, starter), check them before running the project.`;
+    },
   },
   engineNames: {
     house: "dotation rules",
@@ -45,6 +63,13 @@ export const en: Messages = {
     dbMissing: "Vulnerability database missing: run “dotation update-db” once (download only, nothing is sent).",
     dbStale: (d) => `vulnerability database is ${d} days old: run “dotation update-db”`,
   },
+  banner: {
+    project: "Project:",
+    plan: "Plan:",
+    planFree: "Free",
+    planPro: "Pro",
+    planProUnknown: "Pro? (check with `dotation whoami`)",
+  },
   cli: {
     description:
       "Finds basic security slip-ups before you ship. Scans run on your machine: nothing is sent unless you ask.",
@@ -59,6 +84,15 @@ export const en: Messages = {
     initHookExists: (p) =>
       `a hook already exists (${p}): add the line “dotation scan --staged” to it, or run again with --force`,
     updateDbDone: "Vulnerability database is up to date.",
+    sbom: "List every project dependency as a CycloneDX SBOM, from the lockfiles, without network",
+    baseline: "Freeze the current findings in .dotation/baseline.json: later scans only report new ones",
+    baselineWritten: (path, n) =>
+      `Baseline written to ${path}: ${n} finding${n === 1 ? "" : "s"} frozen (no secret value stored, only hashes). Later scans only report new ones.`,
+    baselineUnsafe: (path) =>
+      `Refusing to write ${path}: .dotation or the file is a symbolic link or not a regular file. Nothing was written.`,
+    baselineIncomplete: (engines) =>
+      `Baseline not written: engine(s) failed (${engines}), so it would be incomplete. Fix them or use --allow-partial.`,
+    sbomWritten: (path, n) => `SBOM written to ${path}: ${n} component${n === 1 ? "" : "s"}.`,
     agent:
       "Set up AI coding agents: install the dotation skill and register the MCP server (Claude Code, Cursor, VS Code, Codex…)",
   },

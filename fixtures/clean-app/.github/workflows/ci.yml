@@ -1,0 +1,22 @@
+# Fixture dotation : workflow durci.
+on:
+  pull_request:
+  issues:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: tj-actions/changed-files@0123456789abcdef0123456789abcdef01234567 # v46.0.1
+      - name: Titre de l'issue
+        if: ${{ github.event.issue.title != '' }}
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          echo "Nouvelle issue : $TITLE"
+          echo "$TOKEN" | docker login ghcr.io -u bot --password-stdin

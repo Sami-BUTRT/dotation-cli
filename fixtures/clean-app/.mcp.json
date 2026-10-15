@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}" }
+    },
+    "dotation": {
+      "command": "npx",
+      "args": ["--yes", "--package=https://github.com/Sami-BUTRT/dotation-cli/releases/download/cli-v0.4.0/dotation-0.4.0.tgz", "dotation", "mcp"]
+    },
+    "docs": { "type": "http", "url": "https://mcp.example.com/mcp" },
+    "local": { "type": "http", "url": "http://localhost:3333/mcp" }
+  }
+}

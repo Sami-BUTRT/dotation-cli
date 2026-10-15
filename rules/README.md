@@ -1,37 +1,51 @@
-# Écrire une règle dotation
+# Writing a dotation rule
 
-Une règle est une entrée YAML. Les règles livrées sont dans ce dossier ; celles d'un projet dans `.dotation/rules/*.yaml` (une règle du projet remplace une règle livrée de même `id`). Chaque fichier est validé au chargement : une erreur arrête le scan avec un message précis.
+A rule is a YAML entry. The bundled rules live in this folder; a project's own rules go in `.dotation/rules/*.yaml` (a project rule replaces a bundled rule with the same `id`, except `DOT-SEC-007`; the scan output always lists replaced rules and findings set aside). Each file is validated on load: an error stops the scan with a precise message.
 
 ```yaml
-- id: ACME-SEC-001            # PREFIXE-FAMILLE-NUMÉRO, en majuscules
+- id: ACME-SEC-001            # PREFIX-FAMILY-NUMBER, uppercase
   severity: high              # low | medium | high | critical
-  category: secret            # secret | config | code | dependency | access (sert au dédoublonnage)
+  category: secret            # secret | config | code | dependency | access (used for de-duplication)
+  refs: [A07:2025, NHI2:2025, CWE-798]  # at least one OWASP category and one precise CWE
   detector:
-    type: regex               # voir les détecteurs ci-dessous
-    files: ["**/*.{js,ts}"]   # globs : **, *, ?, {a,b} ; sans « / », s'applique au nom du fichier
+    type: regex               # see the detectors below
+    files: ["**/*.{js,ts}"]   # globs: **, *, ?, {a,b}; without "/", applies to the file name
     exclude: ["**/*.test.ts"]
     pattern: 'internalToken\s*=\s*"(?<secret>[^"]+)"'
-    secretGroup: secret       # groupe nommé masqué dans l'extrait
-    ignoreIf: ['process\.env'] # une ligne qui contient l'un de ces motifs est ignorée
-  text:                       # au moins fr ou en ; es / zh facultatifs (repli anglais)
-    fr: { title: Jeton interne en dur, explanation: Une phrase sur le risque., fix: Comment corriger, en une à trois lignes. }
+    secretGroup: secret       # named group masked in the excerpt
+    ignoreIf: ['process\.env'] # a line containing any of these patterns is skipped
+  text:                       # English only (an `en` block is required)
     en: { title: Hardcoded internal token, explanation: One sentence on the risk., fix: How to fix it, one to three lines. }
 ```
 
-## Détecteurs
+Older rule packs may still contain `fr` / `es` / `zh` blocks: they are accepted and ignored.
 
-| `type` | Signale | Options |
+## Detectors
+
+| `type` | Flags | Options |
 |---|---|---|
-| `regex` | un motif, ligne par ligne (lignes de plus de 2 000 caractères ignorées) | `files`, `exclude`, `pattern`, `flags` (`""` ou `"i"`), `ignoreIf`, `secretGroup`, `fileMustMatch` (le fichier doit contenir ce motif, ex. `"use client"`), `skipUntrackedEnv` |
-| `tracked-file` | un fichier sensible suivi par git | `files`, `exclude`, `publicEnvSeverity` (sévérité d'un `.env` qui ne contient que des variables publiques) |
-| `not-gitignored` | un chemin que git n'ignore pas (projet entier seulement) | `path`, `when` (la règle ne s'applique que si l'un de ces fichiers existe) |
-| `supabase-rls` | table du schéma `public` créée sans `enable row level security` dans aucune migration | `files` |
-| `hidden-code` | code placé après une longue suite d'espaces (dépôts piégés) | `files`, `exclude`, `minSpaces` (défaut 150) |
+| `regex` | a pattern, line by line (lines over 2,000 characters are skipped) | `files`, `exclude`, `pattern`, `flags` (`""` or `"i"`), `ignoreIf`, `secretGroup`, `fileMustMatch` (the file must contain this pattern, or all these patterns, e.g. `"use client"`), `unlessFile` (file skipped if it contains any of these patterns, e.g. a session check), `firstOnly` / `lastOnly` (one finding per file), `skipUntrackedEnv` |
+| `tracked-file` | a sensitive file tracked by git | `files`, `exclude`, `publicEnvSeverity` (severity of a `.env` that only holds public variables) |
+| `not-gitignored` | a path git does not ignore (whole project only) | `path`, `when` (the rule only applies if one of these files exists) |
+| `supabase-rls` | a `public` schema table created without `enable row level security` in any migration | `files`, `when` (the rule only applies if one of the `{ files, pattern? }` conditions holds: a Supabase project) |
+| `sql-statement` | a SQL statement (split on `;`, comments, strings and `$$` blocks respected) whose text matches `pattern`, all `also` and no `unless` (case-insensitive, bounded quantifiers, statements over 20,000 characters skipped); the reported line is the statement start | `files`, `when` (as `supabase-rls`), `pattern`, `also`, `unless` |
+| `missing-sibling` | a manifest at the project root with no companion file (e.g. `package.json` without a lockfile) | `files`, `fileMustMatch`, `siblings` |
+| `lookalike-package` | a dependency (package.json, requirements*.txt, pyproject.toml) whose name resembles a very popular package without being it (Damerau-Levenshtein, separators, `py`, `node-`, `-js` prefixes / suffixes); embedded data (`data/popular-packages.json`, regenerated by `scripts/update-popular-packages.mjs`), no network; texts accept `{name}` and `{similar}` | `files` |
+| `mcp-config` | MCP server configuration (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`..., JSONC accepted) | `files`, `check`: `unpinned` (npx / uvx package without a version), `inline-secret` (hardcoded secret in `env`, `headers`, `args`), `insecure-url` (remote server over `http://`) |
+| `hidden-code` | code placed after a long run of spaces (booby-trapped repos) | `files`, `exclude`, `minSpaces` (default 150) |
 
-## Ton des textes
+## References (`refs`)
 
-Tutoiement, direct, jamais culpabilisant. `explanation` : pourquoi c'est risqué, en une phrase concrète. `fix` : quoi faire, une à trois lignes, avec un exemple si utile. Pas de jargon sans explication.
+Accepted formats: `A01:2025` to `A10:2025` (OWASP Top 10), `API1:2023` to `API10:2023`, `LLM01:2025` to `LLM10:2025`, `MCP01:2025` to `MCP10:2025`, `NHI1:2025` to `NHI10:2025`, `CICD-SEC-1` to `CICD-SEC-10`, `CWE-<number>`. They appear under each finding, in the JSON, in the SARIF (`owasp/...` and `external/cwe/cwe-...` tags) and in the MCP server.
 
-## Tester une règle
+## False positives
 
-Ajoute le cas à `fixtures/vulnerable-app` (faux secrets uniquement) et, si besoin, le cas propre à `fixtures/clean-app`. Le test « chaque règle livrée se déclenche » échoue tant que la fixture ne déclenche pas la nouvelle règle.
+A rule that cries wolf gets every other rule ignored. Before adding a rule: a precise signal (`fileMustMatch`, `unlessFile`, `ignoreIf`), "no false positive" tests in `src/rules/owasp.test.ts`, then a static scan of a few well-known official repos (`--depth 1` clone, never install or execute anything).
+
+## Tone of the texts
+
+Second person, direct, never guilt-tripping. `explanation`: why it is risky, in one concrete sentence. `fix`: what to do, one to three lines, with an example if useful. No unexplained jargon.
+
+## Testing a rule
+
+Add the case to `fixtures/vulnerable-app` (fake secrets only) and, if needed, the clean case to `fixtures/clean-app`. The "every bundled rule fires" test fails until the fixture triggers the new rule.

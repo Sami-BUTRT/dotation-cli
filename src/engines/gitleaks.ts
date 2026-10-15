@@ -3,6 +3,7 @@ import { hasCommand, run } from "../core/exec.js";
 import { isEnvFile } from "../core/files.js";
 import type { Finding, Severity } from "../core/finding.js";
 import { redactLine } from "../core/mask.js";
+import { ENGINE_REFS } from "../core/refs.js";
 import { type Engine, result, shortError } from "./engine.js";
 
 interface GitleaksLeak {
@@ -72,6 +73,7 @@ export function parseGitleaks(json: string, root: string, msg: import("../i18n/i
       file,
       line: l.StartLine,
       snippet,
+      refs: [...ENGINE_REFS.gitleaks],
     };
   });
 }

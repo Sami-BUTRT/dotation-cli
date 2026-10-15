@@ -25,6 +25,10 @@ export interface Finding {
   line: number;
   /** Extrait de la ligne, secrets masqués. Jamais la valeur complète d'un secret. */
   snippet: string;
+  /** Références OWASP et CWE (voir core/refs.ts) ; absent si la règle n'en déclare pas. */
+  refs?: string[];
+  /** Constat d'une règle écrite dans le dépôt analysé (.dotation/rules) : ses textes viennent de l'auteur du dépôt. */
+  projectRule?: true;
 }
 
 const RANK: Record<Severity, number> = { low: 0, medium: 1, high: 2, critical: 3 };

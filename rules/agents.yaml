@@ -1,0 +1,43 @@
+# Configuration des assistants de code et de leurs serveurs MCP (OWASP MCP Top 10 2025, NHI Top 10 2025).
+
+- id: DOT-MCP-001
+  severity: medium
+  category: config
+  refs: [MCP04:2025, A08:2025, CWE-829]
+  detector:
+    type: mcp-config
+    check: unpinned
+    files: ["**/.mcp.json", "**/mcp.json", "**/.cursor/mcp.json", "**/.vscode/mcp.json", "**/.gemini/settings.json", "**/.roo/mcp.json", "**/.kiro/settings/mcp.json", "**/.windsurf/mcp_config.json", "**/claude_desktop_config.json"]
+  text:
+    en:
+      title: MCP server downloaded without a pinned version
+      explanation: npx or uvx fetches the latest published version on every launch. If the package is taken over by someone malicious, your assistant runs their code with your files and tokens.
+      fix: "Pin the version: \"args\": [\"-y\", \"@scope/server@1.4.2\"] (or uvx server==1.4.2), and update it on purpose after reading the changes."
+
+- id: DOT-MCP-002
+  severity: critical
+  category: secret
+  refs: [MCP01:2025, NHI2:2025, A07:2025, CWE-798]
+  detector:
+    type: mcp-config
+    check: inline-secret
+    files: ["**/.mcp.json", "**/mcp.json", "**/.cursor/mcp.json", "**/.vscode/mcp.json", "**/.gemini/settings.json", "**/.roo/mcp.json", "**/.kiro/settings/mcp.json", "**/.windsurf/mcp_config.json", "**/claude_desktop_config.json"]
+  text:
+    en:
+      title: Token hardcoded in the MCP configuration
+      explanation: This file is often committed and shared with the team; the token in it (GitHub, database, API) ends up in git history.
+      fix: "Revoke the token, then reference an environment variable: \"env\": { \"GITHUB_TOKEN\": \"${env:GITHUB_TOKEN}\" } (VS Code) or \"${GITHUB_TOKEN}\" (Claude Code, Cursor)."
+
+- id: DOT-MCP-003
+  severity: high
+  category: config
+  refs: [MCP07:2025, A04:2025, CWE-319]
+  detector:
+    type: mcp-config
+    check: insecure-url
+    files: ["**/.mcp.json", "**/mcp.json", "**/.cursor/mcp.json", "**/.vscode/mcp.json", "**/.gemini/settings.json", "**/.roo/mcp.json", "**/.kiro/settings/mcp.json", "**/.windsurf/mcp_config.json", "**/claude_desktop_config.json"]
+  text:
+    en:
+      title: Remote MCP server over http://
+      explanation: Without encryption, anyone on the network (public wifi, host) can read and change what the assistant sends and receives, tokens included.
+      fix: Use the server's https:// address; http:// is only fine for localhost.

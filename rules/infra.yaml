@@ -1,0 +1,75 @@
+# Configuration de déploiement : conteneurs, publication du site, cookies (OWASP A02:2025, DevSecOps Guideline).
+
+- id: DOT-CFG-004
+  severity: medium
+  category: config
+  refs: [A02:2025, CWE-250]
+  detector:
+    type: regex
+    files: ["**/Dockerfile", "**/Dockerfile.*", "**/*.Dockerfile", "**/Containerfile"]
+    pattern: '^\s*FROM\s'
+    unlessFile: ['^\s*USER\s+(?!root\b|0(?::0)?\s*$)\S', ':nonroot\b|cgr\.dev/chainguard/']
+    lastOnly: true
+  text:
+    en:
+      title: Container runs as root
+      explanation: Without a USER instruction, the app runs as root in the container; a bug in your code or a dependency then gets full control of the container and an easier path to the host.
+      fix: "Add an unprivileged user at the end of the Dockerfile: USER node (official Node images) or RUN adduser -D app then USER app."
+
+- id: DOT-CFG-005
+  severity: low
+  category: dependency
+  refs: [A03:2025, A08:2025, CWE-1357]
+  detector:
+    type: regex
+    files: ["**/Dockerfile", "**/Dockerfile.*", "**/*.Dockerfile", "**/Containerfile", "**/docker-compose*.{yml,yaml}", "**/compose*.{yml,yaml}"]
+    pattern: '^\s*(?:FROM\s+(?:--platform=\S+\s+)?|image:\s*["'']?)[\w./-]+:latest\b'
+  text:
+    en:
+      title: '"latest" container image'
+      explanation: latest changes without notice; tomorrow's build can pull a different, broken or compromised version without anything changing in your repo.
+      fix: "Pin a version (node:22.12-alpine), ideally with its digest (node:22.12-alpine@sha256:…), and update it on purpose."
+
+- id: DOT-CFG-006
+  severity: medium
+  category: config
+  refs: [A02:2025, CWE-668]
+  detector:
+    type: regex
+    files: ["**/docker-compose*.{yml,yaml}", "**/compose*.{yml,yaml}"]
+    pattern: '^\s*-\s*["'']?(?:0\.0\.0\.0:)?(?:5432|3306|27017|6379|9200|5984|11211|1433|5672|15672|8086|26257|7687|9042):\d+["'']?\s*(?:#.*)?$'
+  text:
+    en:
+      title: Database published on every interface
+      explanation: '"5432:5432" opens the database to the machine''s whole network, and to the internet on a server; Docker also often bypasses the firewall (ufw).'
+      fix: "Publish locally only: \"127.0.0.1:5432:5432\", or drop ports: and let services talk over compose's internal network."
+
+- id: DOT-CFG-007
+  severity: low
+  category: config
+  refs: [A02:2025, CWE-540]
+  detector:
+    type: regex
+    files: ["**/next.config.{js,mjs,cjs,ts}"]
+    pattern: '\bproductionBrowserSourceMaps\s*:\s*true\b'
+  text:
+    en:
+      title: Site source code published (source maps)
+      explanation: Production source maps hand everyone your original code, comments and internal names included; that makes hunting for bugs much easier.
+      fix: "Remove productionBrowserSourceMaps, or upload source maps to your error tracker (Sentry…) without publishing them."
+
+- id: DOT-CFG-008
+  severity: medium
+  category: config
+  refs: [A02:2025, CWE-1004, CWE-614]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\b(?:httpOnly|httponly)\s*[:=]\s*(?:false|False)\b|\bsecure\s*:\s*false\b|\b(?:SESSION_COOKIE_SECURE|SESSION_COOKIE_HTTPONLY|CSRF_COOKIE_SECURE|REMEMBER_COOKIE_SECURE|REMEMBER_COOKIE_HTTPONLY)\s*=\s*False\b'
+    fileMustMatch: '[Cc]ookie|COOKIE'
+  text:
+    en:
+      title: Session cookie without protection
+      explanation: Without HttpOnly, an injected script reads the cookie; without Secure, it travels in clear over http://; either way the session can be stolen.
+      fix: "Set session cookies with httpOnly: true, secure: true and sameSite: 'lax'; for local development, use secure: process.env.NODE_ENV === 'production'."

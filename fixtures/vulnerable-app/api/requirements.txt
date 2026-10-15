@@ -1,0 +1,4 @@
+# Fixture dotation : versions non figées. Ne pas corriger.
+fastapi==0.115.0
+requests
+reqeusts==2.32.3

@@ -3,16 +3,13 @@
 - id: DOT-ACC-001
   severity: medium
   category: access
+  refs: [A02:2025, CWE-942]
   detector:
     type: regex
     files: ["**/*.{js,jsx,ts,tsx,mjs,cjs}"]
     exclude: ["**/*.min.js"]
     pattern: '\borigin\s*:\s*(?:["'']\*["'']|true)\b|\bcors\(\s*\)|\.register\(\s*(?:fastifyCors|cors)\s*\)'
   text:
-    fr:
-      title: CORS ouvert à tous les sites
-      explanation: N'importe quel site peut appeler ton API depuis le navigateur de tes visiteurs ; combiné à des cookies ou à une clé côté client, il peut agir à leur place.
-      fix: "Liste les origines autorisées : cors({ origin: ['https://ton-site.fr'] }). En développement, ajoute localhost explicitement."
     en:
       title: CORS open to every site
       explanation: Any website can call your API from your visitors' browsers; combined with cookies or a client-side key, it can act on their behalf.
@@ -21,16 +18,13 @@
 - id: DOT-ACC-002
   severity: low
   category: access
+  refs: [A02:2025, CWE-942]
   detector:
     type: regex
     files: ["**/*.{js,jsx,ts,tsx,mjs,cjs,json,py,php,go}", "**/next.config.*", "**/vercel.json", "**/netlify.toml", "**/_headers"]
     flags: i
     pattern: 'Access-Control-Allow-Origin["'']?\s*[,:=]\s*(?:\{\s*)?(?:["'']?value["'']?\s*:\s*)?["'']\*["'']'
   text:
-    fr:
-      title: En-tête Access-Control-Allow-Origin à « * »
-      explanation: Cet en-tête autorise tous les sites à lire les réponses de ton serveur depuis le navigateur.
-      fix: Renvoie l'origine exacte de ton front (https://ton-site.fr) et ajoute « Vary Origin » si tu en autorises plusieurs.
     en:
       title: Access-Control-Allow-Origin header set to "*"
       explanation: This header lets every website read your server's responses from the browser.
@@ -39,15 +33,12 @@
 - id: DOT-ACC-003
   severity: medium
   category: access
+  refs: [A02:2025, CWE-942]
   detector:
     type: regex
     files: ["**/*.py"]
     pattern: 'allow_origins\s*=\s*\[\s*["'']\*["'']|\bCORS\(\s*app\s*\)|origins\s*=\s*["'']\*["'']|CORS_ALLOW_ALL_ORIGINS\s*=\s*True|CORS_ORIGIN_ALLOW_ALL\s*=\s*True'
   text:
-    fr:
-      title: CORS ouvert à tous les sites (Python)
-      explanation: FastAPI, Flask ou Django acceptent ici les requêtes de n'importe quel site depuis le navigateur de tes visiteurs.
-      fix: "Donne la liste des origines autorisées : allow_origins=['https://ton-site.fr'] (FastAPI), CORS(app, origins=[...]) (Flask), CORS_ALLOWED_ORIGINS (Django)."
     en:
       title: CORS open to every site (Python)
       explanation: FastAPI, Flask or Django accept requests here from any website through your visitors' browsers.
@@ -56,14 +47,16 @@
 - id: DOT-ACC-004
   severity: critical
   category: access
+  refs: [A01:2025, API1:2023, CWE-862]
   detector:
     type: supabase-rls
     files: ["**/*.sql"]
+    # Seulement dans un projet Supabase : ailleurs (Postgres + Drizzle, Prisma…), RLS n'est pas le mécanisme d'accès.
+    when:
+      - { files: ["**/supabase/config.toml", "**/supabase/migrations/*.sql"] }
+      - { files: ["**/package.json"], pattern: '"@supabase/(?:supabase-js|ssr|auth-helpers-[\w-]+)"' }
+      - { files: ["**/requirements*.txt", "**/pyproject.toml"], pattern: '(?im)^\s*["'']?supabase\b' }
   text:
-    fr:
-      title: Table Supabase sans RLS
-      explanation: Sans Row Level Security, n'importe qui avec ta clé anon (publique, elle est dans ton front) peut lire, modifier ou supprimer toutes les lignes de cette table.
-      fix: "Ajoute « alter table nom enable row level security; » dans une migration, puis écris des policies (ex. chacun ne voit que ses propres lignes)."
     en:
       title: Supabase table without RLS
       explanation: Without Row Level Security, anyone with your anon key (public, it ships in your front end) can read, change or delete every row of this table.
@@ -72,16 +65,206 @@
 - id: DOT-ACC-005
   severity: critical
   category: access
+  refs: [A01:2025, API1:2023, CWE-862]
   detector:
     type: regex
     files: ["**/*.rules", "**/firestore.rules", "**/storage.rules", "**/database.rules.json"]
     pattern: 'allow\s+[a-z,\s]+:\s*if\s+true\b|allow\s+[a-z,\s]+;\s*$|"\.(?:read|write)"\s*:\s*true\b'
   text:
-    fr:
-      title: Règles Firebase ouvertes à tous
-      explanation: Avec « if true », n'importe qui sur Internet peut lire et écrire dans ta base ou ton stockage, sans être connecté.
-      fix: "Exige au minimum une connexion et limite chacun à ses données : allow read, write: if request.auth != null && request.auth.uid == userId;"
     en:
       title: Firebase rules open to everyone
       explanation: With "if true", anyone on the internet can read and write your database or storage, without signing in.
       fix: "At least require sign-in and limit users to their own data: allow read, write: if request.auth != null && request.auth.uid == userId;"
+
+# Contrôle d'accès côté serveur (OWASP A01:2025, API Security 2023). Les motifs exigent une écriture en base et
+# l'absence de toute vérification d'identité dans le fichier : mieux vaut rater un cas que crier au loup.
+
+- id: DOT-ACC-006
+  severity: medium
+  category: access
+  refs: [A01:2025, API5:2023, CWE-862]
+  detector:
+    type: regex
+    files: ["**/app/**/route.{ts,js,mjs}", "**/pages/api/**/*.{ts,js,mjs}"]
+    pattern: 'export\s+(?:async\s+)?function\s+(?:POST|PUT|PATCH|DELETE)\b|export\s+const\s+(?:POST|PUT|PATCH|DELETE)\s*=|export\s+default\s+(?:async\s+)?function'
+    fileMustMatch: '\b(?:prisma|db|tx|knex|drizzle)\.\w+(?:\.\w+)?\.(?:create|update|upsert|delete)\w*\(|\.from\([^)]*\)\s*\.(?:insert|update|upsert|delete)\(|\b(?:insert\s+into|update\s+\w+\s+set|delete\s+from)\b|\.(?:insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany|findOneAndUpdate|findByIdAndUpdate|findByIdAndDelete)\('
+    unlessFile:
+      - '\b(?:auth|getServerSession|getSession|currentUser|getUser|getAuth|getToken|requireAuth|requireUser|requireAdmin|withAuth|verifyToken|verifyJwt|jwtVerify|validateRequest|getKindeServerSession|clerkClient|getIronSession|lucia|session|authorization|bearer|apiKey|api_key)\b'
+      - 'x-api-key|constructEvent|verifyWebhook|verifySignature|stripe-signature|svix|x-hub-signature'
+    firstOnly: true
+  text:
+    en:
+      title: API route changes data without checking who's calling
+      explanation: This route writes to the database, but nothing in the file checks a session or a token. Anyone can call it directly (curl, a script), without going through your UI.
+      fix: "At the top of the handler, get the user (e.g. const session = await auth(); if (!session) return new Response(null, { status: 401 })) and check they may touch this object."
+
+- id: DOT-ACC-007
+  severity: medium
+  category: access
+  refs: [A01:2025, API5:2023, CWE-862]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs}"]
+    pattern: 'export\s+(?:async\s+)?function\s+\w+|export\s+const\s+\w+\s*=\s*async\b'
+    fileMustMatch:
+      - '^\s*["'']use server["''];?\s*$'
+      - '\b(?:prisma|db|tx|knex|drizzle)\.\w+(?:\.\w+)?\.(?:create|update|upsert|delete)\w*\(|\.from\([^)]*\)\s*\.(?:insert|update|upsert|delete)\(|\b(?:insert\s+into|update\s+\w+\s+set|delete\s+from)\b|\.(?:insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany|findOneAndUpdate|findByIdAndUpdate|findByIdAndDelete)\('
+    unlessFile:
+      - '\b(?:auth|getServerSession|getSession|currentUser|getUser|getAuth|getToken|requireAuth|requireUser|requireAdmin|withAuth|verifyToken|validateRequest|getKindeServerSession|getIronSession|lucia|session)\b'
+    firstOnly: true
+  text:
+    en:
+      title: Server Action changes data without checking the session
+      explanation: A Server Action is a public endpoint dressed up as a function; anyone can call it with their own arguments, even if the button only shows for admins.
+      fix: "In every action, check the user before writing (const session = await auth(); if (!session) throw new Error('unauthorized')), then that the target object is theirs."
+
+- id: DOT-ACC-008
+  severity: high
+  category: access
+  refs: [A01:2025, API7:2023, CWE-918]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/test/**"]
+    pattern: '\b(?:fetch|axios(?:\.(?:get|post|put|patch|delete|head|request))?|got(?:\.\w+)?|ky(?:\.\w+)?|needle|superagent\.\w+|https?\.(?:get|request)|requests\.(?:get|post|put|patch|delete|head|request)|httpx\.(?:get|post|put|patch|delete|head|request)|urllib\.request\.urlopen|urlopen)\(\s*(?:req\.(?:body|query|params)\b|request\.(?:query|body|args|form|values|json|GET|POST)\b|(?:url\.)?searchParams\.get\(|request\.args\.get\()'
+  text:
+    en:
+      title: Server request to a user-chosen address (SSRF)
+      explanation: Your server calls whatever URL the visitor hands it. They can point it at your internal network, your database or the cloud metadata service (169.254.169.254) and steal credentials.
+      fix: "Only accept a fixed list of domains (new URL(x).hostname in an allowlist), reject private and local addresses, and turn off automatic redirects."
+
+- id: DOT-ACC-009
+  severity: medium
+  category: access
+  refs: [A01:2025, CWE-601]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\b(?:redirect|permanentRedirect|res\.redirect|response\.redirect|NextResponse\.redirect|Response\.redirect|router\.(?:push|replace))\(\s*(?:req\.query\.|request\.query\.|(?:url\.)?searchParams\.get\(|request\.args\.get\(|request\.(?:args|form|values)\[)|window\.location(?:\.href)?\s*=\s*(?:new\s+URLSearchParams\([^)]*\)|(?:url\.)?searchParams)\.get\('
+    ignoreIf: ['startsWith\(\s*["'']/["'']\s*\)', '\b(?:safeRedirect|isSafeUrl|isSafeRedirect|isRelative|allowedRedirect)']
+  text:
+    en:
+      title: Redirect to an address taken from the URL (open redirect)
+      explanation: A link like your-site.com/login?next=https://evil.example sends your users to a fake site after signing in; the link looks safe since it starts with your domain.
+      fix: "Only accept relative paths (starts with \"/\" but not \"//\") or a fixed list of addresses; otherwise redirect to the home page."
+
+- id: DOT-ACC-010
+  severity: high
+  category: access
+  refs: [A01:2025, CWE-22]
+  detector:
+    type: regex
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,py}"]
+    exclude: ["**/*.test.*", "**/*.spec.*"]
+    pattern: '\b(?:readFile|readFileSync|createReadStream|sendFile|download|unlink|unlinkSync|rm|rmSync|writeFile|writeFileSync|open|send_file)\(\s*(?:(?:path|os\.path)\.(?:join|resolve)\([^)]*?)?(?:req\.(?:query|params|body)\b|request\.(?:query|args|form|values|files)\b|(?:url\.)?searchParams\.get\()'
+  text:
+    en:
+      title: File opened with a name from the request (path traversal)
+      explanation: With a name like "../../.env" or "../../../etc/passwd", a visitor reads (or deletes) any file on the server, secrets included.
+      fix: "Map an identifier to a known path (lookup table), or resolve the path and check it stays in your folder (path.resolve(base, x).startsWith(base + path.sep))."
+
+# Supabase en profondeur : instructions SQL des migrations (même condition « projet Supabase » que DOT-ACC-004).
+
+- id: DOT-ACC-011
+  severity: high
+  category: access
+  refs: [A01:2025, API1:2023, CWE-862]
+  detector:
+    type: sql-statement
+    files: ["**/*.sql"]
+    when:
+      - { files: ["**/supabase/config.toml", "**/supabase/migrations/*.sql"] }
+      - { files: ["**/package.json"], pattern: '"@supabase/(?:supabase-js|ssr|auth-helpers-[\w-]+)"' }
+      - { files: ["**/requirements*.txt", "**/pyproject.toml"], pattern: '(?im)^\s*["'']?supabase\b' }
+    pattern: '^\s*create\s+policy\b[\s\S]*?\b(?:using|with\s+check)\s*\(\s*true\s*\)'
+    # Toute commande sauf « for select » seul (voir DOT-ACC-015) : insert, update, delete, all, ou commande absente (= all).
+    also: ['^(?![\s\S]*\bfor\s+select\b)|\bfor\s+(?:insert|update|delete|all)\b']
+    unless:
+      - '\bto\s+"?(?:service_role|postgres|supabase_auth_admin)"?\s*(?:using|with|;|$)'
+  text:
+    en:
+      title: RLS policy that lets everyone in
+      explanation: "With \"using (true)\" or \"with check (true)\", the policy filters nothing: anyone with your anon key (public, it ships in your front end) can read, write or delete every row of the table, depending on the command."
+      fix: "Replace \"true\" with a condition tied to the user, e.g. using (auth.uid() = user_id). For server-only access, use \"to service_role\"."
+
+- id: DOT-ACC-015
+  severity: medium
+  category: access
+  refs: [A01:2025, API1:2023, CWE-862]
+  detector:
+    type: sql-statement
+    files: ["**/*.sql"]
+    when:
+      - { files: ["**/supabase/config.toml", "**/supabase/migrations/*.sql"] }
+      - { files: ["**/package.json"], pattern: '"@supabase/(?:supabase-js|ssr|auth-helpers-[\w-]+)"' }
+      - { files: ["**/requirements*.txt", "**/pyproject.toml"], pattern: '(?im)^\s*["'']?supabase\b' }
+    pattern: '^\s*create\s+policy\b[\s\S]*?\b(?:using|with\s+check)\s*\(\s*true\s*\)'
+    also: ['\bfor\s+select\b']
+    unless:
+      - '\bfor\s+(?:insert|update|delete|all)\b'
+      - '\bto\s+"?(?:service_role|postgres|supabase_auth_admin)"?\s*(?:using|with|;|$)'
+  text:
+    en:
+      title: RLS read policy open to everyone
+      explanation: "With \"for select using (true)\", anyone with your anon key (public) can read every row of the table. This is intended if the table is public (e.g. public profiles)."
+      fix: "If the table is not public, replace \"true\" with a condition tied to the user, e.g. using (auth.uid() = user_id). Otherwise you can ignore this finding."
+
+- id: DOT-ACC-012
+  severity: high
+  category: access
+  refs: [A01:2025, API5:2023, CWE-250]
+  detector:
+    type: sql-statement
+    files: ["**/*.sql"]
+    when:
+      - { files: ["**/supabase/config.toml", "**/supabase/migrations/*.sql"] }
+      - { files: ["**/package.json"], pattern: '"@supabase/(?:supabase-js|ssr|auth-helpers-[\w-]+)"' }
+      - { files: ["**/requirements*.txt", "**/pyproject.toml"], pattern: '(?im)^\s*["'']?supabase\b' }
+    pattern: '^\s*create\s+(?:or\s+replace\s+)?function\s+(?!"?(?!public\b)\w{1,63}"?\.)'
+    also: ['\bsecurity\s+definer\b']
+    unless:
+      - '\bset\s+search_path\b'
+  text:
+    en:
+      title: "\"security definer\" function without a fixed search_path"
+      explanation: A function in the public schema can be called through the API (RPC) with its owner's rights. Without "set search_path", a caller can hijack the objects it uses; without an identity check, it can bypass your RLS policies.
+      fix: "Add \"set search_path = ''\" (and qualify tables: public.my_table), check auth.uid() inside the function, and remove access with \"revoke execute … from anon, public\". Put it in an unexposed schema if the front end doesn't need to call it."
+
+- id: DOT-ACC-013
+  severity: medium
+  category: access
+  refs: [A01:2025, API1:2023, CWE-732]
+  detector:
+    type: sql-statement
+    files: ["**/*.sql"]
+    when:
+      - { files: ["**/supabase/config.toml", "**/supabase/migrations/*.sql"] }
+      - { files: ["**/package.json"], pattern: '"@supabase/(?:supabase-js|ssr|auth-helpers-[\w-]+)"' }
+      - { files: ["**/requirements*.txt", "**/pyproject.toml"], pattern: '(?im)^\s*["'']?supabase\b' }
+    pattern: '^\s*(?:insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){1}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){1}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){2}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){2}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){3}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){3}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){4}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){4}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){5}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){5}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){6}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){6}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){7}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){7}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){8}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){8}\s*(?:true|''true'')\b|insert\s+into\s+"?storage"?\s*\.\s*"?buckets"?\s*\(\s*(?:"?\w+"?\s*,\s*){9}"?public"?\s*(?:,[^)]{0,500})?\)\s*values\s*\(\s*(?:(?:[^,()''\w]|''[^'']{0,200}''|\w+\b(?:\([^()]{0,100}\))?)+,){9}\s*(?:true|''true'')\b|update\s+"?storage"?\s*\.\s*"?buckets"?\s+set\b[^;]{0,500}?\bpublic\s*=\s*(?:true|''true'')\b|select\s+storage\s*\.\s*create_bucket\s*\([^)]{0,300}?\bpublic\s*=>\s*(?:true|''true'')\b)'
+  text:
+    en:
+      title: Public Supabase storage bucket
+      explanation: Everything in a public bucket is readable by anyone who knows the URL, without signing in. Fine for site images, not for files your users upload.
+      fix: "Set \"public\" to false for private files, add policies on storage.objects and serve files with signed URLs (createSignedUrl)."
+
+- id: DOT-ACC-014
+  severity: medium
+  category: access
+  refs: [A01:2025, API1:2023, CWE-863]
+  detector:
+    type: sql-statement
+    files: ["**/*.sql"]
+    when:
+      - { files: ["**/supabase/config.toml", "**/supabase/migrations/*.sql"] }
+      - { files: ["**/package.json"], pattern: '"@supabase/(?:supabase-js|ssr|auth-helpers-[\w-]+)"' }
+      - { files: ["**/requirements*.txt", "**/pyproject.toml"], pattern: '(?im)^\s*["'']?supabase\b' }
+    pattern: '^\s*create\s+(?:or\s+replace\s+)?(?:temp(?:orary)?\s+)?(?:recursive\s+)?view\s+(?!"?(?!public\b)\w{1,63}"?\.)'
+    unless:
+      - '\bsecurity_invoker\s*(?:=\s*(?:true|on|1|''true''|''on'')\b|(?=\s*[,)]))'
+  text:
+    en:
+      title: Supabase view that bypasses RLS
+      explanation: "A view in the public schema runs with its owner's rights by default (on every Postgres version) and ignores the RLS of the tables it reads: the API can return it to anyone."
+      fix: "On Postgres 15+ (Supabase), create it with \"with (security_invoker = true)\" so the caller's policies apply, or put it in an unexposed schema."

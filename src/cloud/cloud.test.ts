@@ -134,7 +134,6 @@ function report(findings: Partial<Finding>[]): ScanReport {
   return {
     root: "/home/moi/mon-app",
     target: ".",
-    lang: "fr",
     fileCount: 3,
     score: 61,
     statuses: [],
@@ -293,7 +292,7 @@ describe("packs de règles signés", () => {
     const prev = process.env.XDG_CACHE_HOME;
     process.env.XDG_CACHE_HOME = e.XDG_CACHE_HOME;
     try {
-      const r = await scan(dir, { lang: "fr" });
+      const r = await scan(dir);
       expect(r.findings.some((f) => f.id === "PACK-TEST-001")).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.XDG_CACHE_HOME;
@@ -389,20 +388,19 @@ describe("assistant IA", () => {
     });
     let out = "";
     const finding = report([{}]).findings[0] as Finding;
-    const r = await explain(base, TOKEN, { finding, snippet: "x", fix: true, lang: "fr" }, (s) => (out += s));
+    const r = await explain(base, TOKEN, { finding, snippet: "x", fix: true }, (s) => (out += s));
     expect(out).toBe("Active RLS.");
     expect(r.outputTokens).toBe(2);
     expect(sent).toMatchObject({
       task: "fix",
-      lang: "fr",
       finding: { ruleId: "DOT-SEC-001", severity: "critical", category: "secret" },
       snippet: "x",
     });
     expect(Object.keys(sent.finding as object).sort()).toEqual(["category", "file", "ruleId", "severity"]);
     const closed = await fakeApi((_req, res) => json(res, 503, { code: "ai_unavailable" }));
-    await expect(
-      explain(closed, TOKEN, { finding, snippet: "", fix: false, lang: "en" }, () => {}),
-    ).rejects.toMatchObject({ code: "ai_unavailable" });
+    await expect(explain(closed, TOKEN, { finding, snippet: "", fix: false }, () => {})).rejects.toMatchObject({
+      code: "ai_unavailable",
+    });
   });
 });
 
