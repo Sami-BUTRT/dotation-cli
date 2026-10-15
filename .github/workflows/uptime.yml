@@ -1,0 +1,42 @@
+# Surveillance externe : GitHub envoie un e-mail au porteur quand un run planifié échoue.
+# Ce fichier vit dans le monorepo (cli/.github/workflows/) et est publié dans le dépôt PUBLIC
+# Sami-BUTRT/dotation-cli par cli/scripts/publish-public-repo.sh : les minutes Actions y sont gratuites,
+# d'où un contrôle toutes les 10 minutes.
+# Attention : GitHub désactive les workflows planifiés après 60 jours sans activité dans ce dépôt.
+name: uptime
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Contrôle des points de santé
+        shell: bash
+        run: |
+          set -u
+          fail=0
+          check() {
+            local url=$1
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)
+              if [ "$code" = "200" ]; then
+                echo "OK $url"
+                return 0
+              fi
+              echo "tentative $i/3 : $url a répondu '$code'"
+              [ "$i" -lt 3 ] && sleep 20
+            done
+            echo "::error::ÉCHEC : $url ne répond pas 200 après 3 tentatives"
+            return 1
+          }
+          check https://www.dotation.app/api/readyz || fail=1
+          check https://www.dotation.app/fr || fail=1
+          check https://api.dotation.app/readyz || fail=1
+          exit "$fail"
