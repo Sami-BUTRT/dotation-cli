@@ -71,5 +71,5 @@
   text:
     en:
       title: "Dependency \"{name}\" looks like a very popular package"
-      explanation: "\"{name}\" looks a lot like {similar}, which are very widely used, without being one of them. That is typical of a typo, a name invented by an AI, or a booby-trapped package imitating a real one (slopsquatting): check that it is the one you meant."
+      explanation: "\"{name}\" looks a lot like {similar} (very widely used) without being one of them. That is typical of a typo, a name invented by an AI, or a booby-trapped package imitating a real one (slopsquatting): check that it is the one you meant."
       fix: "Look \"{name}\" up on npmjs.com or pypi.org (author, age, downloads). If you meant {similar}, fix the name; if the package is intended, ignore this finding. A lockfile does not prove a package is legitimate."
