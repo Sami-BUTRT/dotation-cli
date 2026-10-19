@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { loadCredentials } from "../cloud/config.js";
 import { safeLine } from "../core/terminal.js";
 import type { Messages } from "../i18n/index.js";
-import { cells, INK, RED } from "./logo-grid.js";
+import { type Ink, symbolGrid } from "./symbol.js";
 
 export type Plan = "free" | "pro" | "pro?";
 export type ColorMode = "none" | "ansi" | "truecolor";
@@ -18,27 +18,47 @@ export interface BannerInfo {
 }
 
 const RESET = "\x1b[0m";
-const RED_SEQ: Record<Exclude<ColorMode, "none">, string> = { truecolor: "\x1b[38;2;232;50;14m", ansi: "\x1b[31m" };
+const BOLD = "\x1b[1m";
+const BOLD_OFF = "\x1b[22m";
+/** Couleurs de la charte : ciel #8DCFF5, abricot #FF9A62 ; en 16 couleurs, cyan clair et jaune (souvent orangé). */
+const FG: Record<Exclude<ColorMode, "none">, Record<Ink, string>> = {
+  truecolor: { sky: "\x1b[38;2;141;207;245m", apricot: "\x1b[38;2;255;154;98m" },
+  ansi: { sky: "\x1b[96m", apricot: "\x1b[33m" },
+};
+const BG: Record<Exclude<ColorMode, "none">, Record<Ink, string>> = {
+  truecolor: { sky: "\x1b[48;2;141;207;245m", apricot: "\x1b[48;2;255;154;98m" },
+  ansi: { sky: "\x1b[106m", apricot: "\x1b[43m" },
+};
 const NARROW = 50;
 
-/** Logo en demi-blocs : 2 rangées de pixels par ligne de terminal. Le « noir » reste en couleur d'avant-plan par défaut. */
+/** Symbole « Le saut » en demi-blocs (2 pixels par ligne de terminal), puis le mot « dotation » en gras à droite. */
 export function renderLogo(color: ColorMode): string[] {
-  const grid = new Map<string, "r" | "k">();
-  for (const c of [...cells(RED, "r"), ...cells(INK, "k")]) grid.set(`${c.x},${c.y}`, c.c);
-  const w = Math.max(...[...grid.keys()].map((k) => Number(k.split(",")[0]))) + 1;
-  const h = Math.max(...[...grid.keys()].map((k) => Number(k.split(",")[1]))) + 1;
+  const grid = symbolGrid(24, 16);
   const lines: string[] = [];
-  for (let y = 0; y < h; y += 2) {
+  for (let y = 0; y < grid.length; y += 2) {
     let line = "";
-    for (let x = 0; x < w; x++) {
-      const top = grid.get(`${x},${y}`);
-      const bot = grid.get(`${x},${y + 1}`);
-      const ch = top && bot ? "█" : top ? "▀" : bot ? "▄" : " ";
-      const kind = top ?? bot;
-      line += kind === "r" && color !== "none" ? `${RED_SEQ[color]}${ch}${RESET}` : ch;
+    const top = grid[y] ?? [];
+    const bot = grid[y + 1] ?? [];
+    for (let x = 0; x < top.length; x++) {
+      const t = top[x];
+      const b = bot[x];
+      if (!t && !b) {
+        line += " ";
+        continue;
+      }
+      const ch = t && b && t === b ? "█" : t ? "▀" : "▄";
+      if (color === "none") line += t && b ? (t === b ? "█" : "▀") : ch;
+      else if (t && b && t !== b) line += `${FG[color][t]}${BG[color][b]}▀${RESET}`;
+      else line += `${FG[color][(t ?? b) as Ink]}${ch}${RESET}`;
     }
     lines.push(line.trimEnd());
   }
+  // Mot-symbole à droite, sur la ligne la plus large (milieu du symbole), comme le logo du site.
+  const row = Math.min(lines.length - 1, 4);
+  const word = color === "none" ? "dotation" : `${BOLD}dotation${BOLD_OFF}`;
+  const width = 24;
+  const plain = (s: string) => s.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g"), "");
+  lines[row] = `${lines[row] ?? ""}${" ".repeat(Math.max(1, width + 2 - [...plain(lines[row] ?? "")].length))}${word}`;
   return lines;
 }
 
@@ -48,10 +68,8 @@ export function renderBanner(info: BannerInfo, m: Messages): string {
   const plan =
     info.plan === "pro" ? m.banner.planPro : info.plan === "pro?" ? m.banner.planProUnknown : m.banner.planFree;
   if (info.columns < NARROW) return `dotation v${info.version} — ${where} — ${plan}\n`;
-  const word = "D O T A T I O N . A P P";
   return `${[
     ...renderLogo(info.color),
-    word.padStart(Math.floor((40 + word.length) / 2)),
     "",
     `dotation v${info.version}`,
     `${m.banner.project} ${where}`,

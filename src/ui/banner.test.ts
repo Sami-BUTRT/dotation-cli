@@ -7,6 +7,7 @@ import { messages } from "../i18n/index.js";
 import { packagePath } from "../paths.js";
 import { tempDir } from "../test/helpers.js";
 import { type BannerInfo, localPlan, renderBanner, renderLogo, repoInfo, shouldShowBanner } from "./banner.js";
+import { SYMBOL } from "./symbol.js";
 
 const m = messages();
 const base: BannerInfo = {
@@ -22,11 +23,14 @@ const ESC = /\u001b/;
 const strip = (s: string) => s.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g"), "");
 
 describe("banner", () => {
-  it("le logo tient en 60 colonnes et 12 lignes", () => {
+  it("le logo tient en 60 colonnes et 12 lignes, aux couleurs de la charte, avec le mot dotation", () => {
     const lines = renderLogo("truecolor");
     expect(lines.length).toBeLessThanOrEqual(12);
     for (const l of lines) expect([...strip(l)].length).toBeLessThanOrEqual(60);
-    expect(lines.join("")).toContain("38;2;232;50;14");
+    expect(lines.join("")).toContain("38;2;141;207;245"); // ciel
+    expect(lines.join("")).toContain("38;2;255;154;98"); // abricot
+    expect(lines.map(strip).join("\n")).toContain("dotation");
+    expect(lines.join("")).not.toContain("38;2;232;50;14"); // ancien rouge du logo pixel
   });
   it("NO_COLOR : aucun code d'échappement", () => {
     expect(renderBanner({ ...base, color: "none" }, m)).not.toMatch(ESC);
@@ -81,15 +85,15 @@ describe("banner", () => {
     expect(r.repo).not.toContain("/");
     expect((await repoInfo(await tempDir("banner-nogit-"))).branch).toBeUndefined();
   });
-  it.skipIf(!existsSync(packagePath("../web/src/lib/logo-grid.ts")))(
-    "la grille est identique à celle du site (ignoré hors monorepo)",
+  it.skipIf(!existsSync(packagePath("../web/public/symbol.svg")))(
+    "le symbole a la même géométrie que celui du site (ignoré hors monorepo)",
     () => {
-      const strip2 = (s: string) => s.split("\n").slice(1).join("\n");
-      const cli = readFileSync(packagePath("src/ui/logo-grid.ts"), "utf8");
-      const web = readFileSync(packagePath("../web/src/lib/logo-grid.ts"), "utf8");
-      // biome reformate la copie : on compare sans les espaces ni les virgules finales
-      const norm = (t: string) => t.replace(/[\s]|,(?=[}\]])/g, "");
-      expect(norm(strip2(cli))).toBe(norm(web));
+      const svg = readFileSync(packagePath("../web/public/symbol.svg"), "utf8");
+      expect(svg).toContain(`viewBox="${SYMBOL.viewBox.join(" ")}"`);
+      expect(svg).toContain(`<circle cx="${SYMBOL.disc.cx}" cy="${SYMBOL.disc.cy}" r="${SYMBOL.disc.r}"`);
+      expect(svg).toContain(`<circle cx="${SYMBOL.dot.cx}" cy="${SYMBOL.dot.cy}" r="${SYMBOL.dot.r}"`);
+      expect(svg).toContain(`a${SYMBOL.arc.r} ${SYMBOL.arc.r} 0 0 1 ${SYMBOL.arc.r * 2} 0`);
+      expect(svg).toContain(`stroke-width="${SYMBOL.arc.width}"`);
     },
   );
 });

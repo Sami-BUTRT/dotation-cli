@@ -12,7 +12,7 @@ One command, from the GitHub releases (Node.js 22.12 or newer):
 npm install -g https://github.com/Sami-BUTRT/dotation-cli/releases/latest/download/dotation.tgz
 ```
 
-The package carries its exact, tested dependencies: nothing else is resolved from the npm registry and nothing runs at install time. Run the same command to update. A specific version: `…/releases/download/cli-v0.2.2/dotation-0.2.2.tgz`; checksums in `SHA256SUMS` on each release.
+The package carries its exact, tested dependencies: nothing else is resolved from the npm registry and nothing runs at install time. Run the same command to update. A specific version: `…/releases/download/cli-v0.2.3/dotation-0.2.3.tgz`; checksums in `SHA256SUMS` on each release.
 
 Without installing: `npx --yes --package=https://github.com/Sami-BUTRT/dotation-cli/releases/latest/download/dotation.tgz dotation scan`
 
