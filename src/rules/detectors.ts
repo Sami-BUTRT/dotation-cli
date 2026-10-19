@@ -3,7 +3,7 @@ import { run } from "../core/exec.js";
 import { type FileSet, isEnvFile, readText, type ScanFile, type Scope } from "../core/files.js";
 import type { Finding } from "../core/finding.js";
 import { matchAny } from "../core/glob.js";
-import { redactLine, truncate } from "../core/mask.js";
+import { redactLine, redactSecretLine, truncate } from "../core/mask.js";
 import {
   type Dep,
   type Ecosystem,
@@ -120,7 +120,12 @@ async function detectRegex(rule: RegexRule, input: DetectInput): Promise<Finding
       for (const m of line.matchAll(rx)) {
         if (ignore.some((x) => x.test(line))) break;
         const secret = d.secretGroup ? m.groups?.[d.secretGroup] : undefined;
-        out.push(finding(rule, f.path, i + 1, redactLine(line, secret ? [secret] : [])));
+        // Règle « secret » : masquage agressif de tout l'extrait, quel que soit le groupe capturé.
+        const snippet =
+          rule.category === "secret"
+            ? redactSecretLine(line, secret ? [secret] : [])
+            : redactLine(line, secret ? [secret] : []);
+        out.push(finding(rule, f.path, i + 1, snippet));
         found = true;
         break; // une fois par ligne suffit
       }
@@ -619,10 +624,12 @@ async function detectMcpConfig(rule: Rule, input: DetectInput): Promise<Finding[
           else if (i > 0 && /^--?[\w-]*(?:key|token|secret|password)[\w-]*$/i.test(args[i - 1] ?? ""))
             pairs.push([args[i - 1] as string, a]);
         });
+        // Toutes les valeurs du serveur passent au masquage (une ligne peut en porter plusieurs), en refus par défaut.
+        const values = pairs.map(([, v]) => v);
         for (const [k, v] of pairs) {
           if (!inlineSecret(k, v)) continue;
           const line = lineOf(v) || where;
-          out.push(finding(rule, f.path, line, redactLine(lines[line - 1] ?? "", [v])));
+          out.push(finding(rule, f.path, line, redactSecretLine(lines[line - 1] ?? "", values)));
         }
       }
       if (d.check === "insecure-url") {

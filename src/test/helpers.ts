@@ -54,6 +54,7 @@ export const FAKE_SECRETS = [
   "sk-proj-FAKEdotationFixtureKey000000000000000000000000",
   "FakeFixtureDbPass99",
   "FakeFixturePass42",
+  "fake-service-role-dotation-fixture",
   "fake-fixture-jwt-secret",
   "FakeDotationMcpToken0000",
 ];
