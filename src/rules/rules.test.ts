@@ -2,6 +2,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { houseEngine } from "../engines/house.js";
+import { renderJson } from "../output/json.js";
+import { renderPretty } from "../output/pretty.js";
+import { toSarif } from "../output/sarif.js";
 import { scan } from "../scan.js";
 import { fixtureRepo, tempDir } from "../test/helpers.js";
 import { gitignoreCovers } from "./detectors.js";
@@ -258,5 +261,162 @@ describe("faux positifs trouvés sur de vrais projets", () => {
     );
     const r = await scan(d, { engines: [houseEngine] });
     expect(r.findings.map((f) => `${f.id}:${f.line}`)).toEqual(["DOT-CODE-001:5"]);
+  });
+});
+
+describe("masquage des variables publiques", () => {
+  // Faux secrets assemblés pour ne pas déclencher les scanners de fuite du dépôt.
+  const FAKE_LIVE = ["sk", "live", "FAKEdotationPublicVar0000"].join("_");
+  const FAKE_JWT = ["eyJ", "hbGciOiJIUzI1NiJ9", "ZmFrZS1kb3RhdGlvbg", "ZmFrZVNpZ25hdHVyZQ"].join(".");
+
+  it("la valeur d'une variable publique n'apparaît ni en pretty, ni en JSON, ni en SARIF", async () => {
+    const d = await tempDir();
+    await writeFile(
+      join(d, ".env"),
+      `NEXT_PUBLIC_SECRET_TOKEN=${FAKE_LIVE}\nNEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=${FAKE_JWT}\n`,
+    );
+    const report = await scan(d, { engines: [houseEngine] });
+    const hits = report.findings.filter((f) => f.id === "DOT-SEC-004");
+    expect(hits.map((f) => f.line)).toEqual([1, 2]);
+    const outputs = [
+      renderPretty(report, { all: true, color: false }),
+      renderJson(report),
+      JSON.stringify(toSarif(report)),
+    ];
+    for (const [i, out] of outputs.entries()) {
+      if (i < 2) expect(out).toContain("NEXT_PUBLIC_SECRET_TOKEN"); // SARIF ne porte pas d'extrait
+      for (const v of [FAKE_LIVE, FAKE_JWT, "hbGciOiJIUzI1NiJ9", "FAKEdotationPublicVar0000"]) {
+        expect(out).not.toContain(v);
+      }
+    }
+  });
+
+  it("filet de sécurité : une règle « secret » sans groupe capturé masque la valeur affectée", async () => {
+    const d = await tempDir();
+    await writeFile(join(d, "client.ts"), `"use client";\nconst k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n`);
+    await mkdir(join(d, "app"));
+    await writeFile(join(d, "app/page.tsx"), `"use client";\nconst service_role = "${FAKE_JWT}";\n`);
+    const report = await scan(d, { engines: [houseEngine] });
+    const sec5 = report.findings.filter((f) => f.id === "DOT-SEC-005");
+    expect(sec5.map((f) => f.file).sort()).toEqual(["app/page.tsx", "client.ts"]);
+    expect(JSON.stringify(report)).not.toContain(FAKE_JWT);
+    // une lecture de variable d'environnement reste lisible
+    expect(sec5.find((f) => f.file === "client.ts")?.snippet).toContain("process.env.SUPABASE_SERVICE_ROLE_KEY");
+  });
+
+  // Chaque ligne : [nom du fichier, contenu, valeurs factices qui ne doivent apparaître nulle part, règle attendue]
+  const CASES: [string, string, string[], string][] = [
+    [
+      ".env",
+      "NEXT_PUBLIC_A_SECRET=FAKEaaaa1111bbbb2222 NEXT_PUBLIC_B_SECRET=FAKEbbbb3333",
+      ["FAKEaaaa1111", "FAKEbbbb3333"],
+      "DOT-SEC-004",
+    ],
+    [
+      "a.ts",
+      'const c = { NEXT_PUBLIC_API_SECRET: "FAKEg1g1g1", NEXT_PUBLIC_DB_PASSWORD: "FAKEh2h2h2" };',
+      ["FAKEg1g1g1", "FAKEh2h2h2"],
+      "DOT-SEC-004",
+    ],
+    [
+      "b.ts",
+      'const d = { "import.meta.env.VITE_SECRET_J": JSON.stringify("FAKEj3j3j3") };',
+      ["FAKEj3j3j3"],
+      "DOT-SEC-004",
+    ],
+    [".env", 'NEXT_PUBLIC_SECRET_K="FAKEcc cc3333 cccc"', ["FAKEcc", "cc3333", "cccc"], "DOT-SEC-004"],
+    ["c.ts", 'const e = process.env.NEXT_PUBLIC_SECRET_I ?? "FAKEi4i4i4";', ["FAKEi4i4i4"], "DOT-SEC-004"],
+    ["d.ts", 'const f = process.env.VITE_OPENAI_API_KEY || "FAKEo5o5o5";', ["FAKEo5o5o5"], "DOT-AI-001"],
+    [".env", "NEXT_PUBLIC_PASSWORD=Fk9q2", ["Fk9q2"], "DOT-SEC-004"],
+    ["e.ts", "const g = { NEXT_PUBLIC_SECRET_L: `FAKEl6l6l6` };", ["FAKEl6l6l6"], "DOT-SEC-004"],
+    ["f.ts", "const h = { NEXT_PUBLIC_SECRET_M: 'FAKEm7m7m7' };", ["FAKEm7m7m7"], "DOT-SEC-004"],
+    [".env", "export NEXT_PUBLIC_SECRET_N=FAKEn8n8n8", ["FAKEn8n8n8"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_SECRET_P: 'FAKEp9p9p9'", ["FAKEp9p9p9"], "DOT-SEC-004"],
+    [
+      ".env",
+      "NEXT_PUBLIC_SECRET_Q=FAKEq1q1q1\r\nNEXT_PUBLIC_SECRET_R=FAKEr2r2r2\r\n",
+      ["FAKEq1q1q1", "FAKEr2r2r2"],
+      "DOT-SEC-004",
+    ],
+    [
+      "g.ts",
+      `const i = { NEXT_PUBLIC_SECRET_S: "${"x".repeat(150)}FAKEs3s3s3s3s3s3" };`,
+      ["FAKEs3s3s3s3s3s3"],
+      "DOT-SEC-004",
+    ],
+    // Deuxième relecture : caractères spéciaux, valeurs en « $ », guillemet isolé plus tôt sur la ligne.
+    [".env", "NEXT_PUBLIC_PASSWORD_E=abc#FAKEe5e5e5", ["FAKEe5e5e5"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_F=it'sFAKEf6f6f6", ["FAKEf6f6f6"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_G=pa;FAKEg7g7g7", ["FAKEg7g7g7"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_L=x,FAKEl8l8l8", ["FAKEl8l8l8"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_K=(FAKEk9k9k9)", ["FAKEk9k9k9"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_I=$FAKEi1i1i1", ["FAKEi1i1i1"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_H=$Abc123!FAKEh2h2h2", ["FAKEh2h2h2", "Abc123"], "DOT-SEC-004"],
+    ["h.ts", "const re = /'/; const NEXT_PUBLIC_SECRET_X = 'FAKEw3w3w3';", ["FAKEw3w3w3"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_SECRET_URL=https://user:FAKEu4u4u4@db.example.com", ["FAKEu4u4u4"], "DOT-SEC-004"],
+    ["i.ts", "const t = { NEXT_PUBLIC_SECRET_Y: `${base}FAKEy5y5y5` };", ["FAKEy5y5y5"], "DOT-SEC-004"],
+    // Troisième relecture : deux valeurs sur une ligne .mcp.json, forme setenv, deux-points dans la valeur.
+    [
+      ".mcp.json",
+      '{"mcpServers": {"acme": {"command": "acme-mcp", "env": { "ACME_API_TOKEN": "FAKEaaaa1111aaaa2222", "OTHER_SECRET_KEY": "FAKEbbbb3333bbbb4444" }}}}',
+      ["FAKEaaaa1111", "FAKEbbbb3333"],
+      "DOT-MCP-002",
+    ],
+    [".envrc", "setenv NEXT_PUBLIC_PASSWORD FAKEccpw", ["FAKEccpw"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_SECRET_C=abcd1234efgh:FAKEc7c7", ["abcd1234efgh", "FAKEc7c7"], "DOT-SEC-004"],
+    [".env", 'NEXT_PUBLIC_SECRET_D="FAKEdd dd4444:x"', ["FAKEdd", "dd4444"], "DOT-SEC-004"],
+    // Quatrième relecture : valeurs déguisées en noms, en références ou en clés ; deux mots sans séparateur.
+    [".env", "NEXT_PUBLIC_SECRET_A=FAKE_BBB_CCC:FAKEtail1", ["FAKE_BBB_CCC", "FAKEtail1"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_SECRET_B=FAKE_DDD_EEE=", ["FAKE_DDD_EEE"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_C=hunter-vars.FAKEvarsPart9", ["FAKEvarsPart9", "hunter"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_E=a/process.env.FAKEprocPart9", ["FAKEprocPart9"], "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_PASSWORD_P=process.env.FAKEprocStart9", ["FAKEprocStart9"], "DOT-SEC-004"],
+    [".env", 'NEXT_PUBLIC_SECRET_F={"FAKEkeyAsSecret9":1}', ["FAKEkeyAsSecret9"], "DOT-SEC-004"],
+    [".envrc", "NEXT_PUBLIC_PASSWORD FAKEtwoWords", ["FAKEtwoWords"], "DOT-SEC-004"],
+    [".env", 'NEXT_PUBLIC_SECRET_G="FAKE ABC_DEF=ghi"', ["ABC_DEF", "ghi"], "DOT-SEC-004"],
+    // Cinquième relecture : texte avant le premier séparateur ou guillemet.
+    [".envrc", "setenv NEXT_PUBLIC_PASSWORD FAKEpwA1 # TODO: rotate", ["FAKEpwA1"], "DOT-SEC-004"],
+    [".envrc", "setenv NEXT_PUBLIC_PASSWORD FAKEpwB2 # don't commit", ["FAKEpwB2"], "DOT-SEC-004"],
+    [
+      "m.ts",
+      '{"FAKEkeyLeft3": "x", "NEXT_PUBLIC_SECRET_H": "FAKEh4h4h4"}',
+      ["FAKEkeyLeft3", "FAKEh4h4h4"],
+      "DOT-SEC-004",
+    ],
+  ];
+
+  it.each([
+    ["k.ts", "const u = process.env.NEXT_PUBLIC_SECRET_KEY2;", "process.env.NEXT_PUBLIC_SECRET_KEY2", "DOT-SEC-004"],
+    [".env", "NEXT_PUBLIC_SECRET_V2=FAKEv8v8v8", "NEXT_PUBLIC_SECRET_V2=", "DOT-SEC-004"],
+    ["l.js", 'module.exports = { env: { NEXT_PUBLIC_API_SECRET: "FAKEw9w9w9" } };', "module.exports =", "DOT-SEC-004"],
+  ])("masquage lisible : le nom reste visible (%s)", async (file, content, visible, ruleId) => {
+    const d = await tempDir();
+    await writeFile(join(d, file), content);
+    const report = await scan(d, { engines: [houseEngine] });
+    const f = report.findings.find((x) => x.id === ruleId);
+    expect(f?.snippet).toContain(visible);
+    expect(f?.snippet).not.toMatch(/FAKE[a-z]\d/);
+  });
+
+  it("masquage par refus par défaut : nom et références process.env lisibles, valeur masquée", async () => {
+    const d = await tempDir();
+    await writeFile(join(d, "j.ts"), 'const e = process.env.NEXT_PUBLIC_SECRET_Z ?? "FAKEz6z6z6";');
+    const report = await scan(d, { engines: [houseEngine] });
+    const f = report.findings.find((x) => x.id === "DOT-SEC-004");
+    expect(f?.snippet).toContain("process.env.NEXT_PUBLIC_SECRET_Z");
+    expect(f?.snippet).not.toContain("FAKEz6z6z6");
+  });
+
+  it.each(CASES)("contournements : %s %#", async (file, content, values, ruleId) => {
+    const d = await tempDir();
+    await writeFile(join(d, file), content);
+    const report = await scan(d, { engines: [houseEngine] });
+    expect(report.findings.some((f) => f.id === ruleId)).toBe(true);
+    const outputs = [
+      renderPretty(report, { all: true, color: false }),
+      renderJson(report),
+      JSON.stringify(toSarif(report)),
+    ];
+    for (const out of outputs) for (const v of values) expect(out).not.toContain(v);
   });
 });
