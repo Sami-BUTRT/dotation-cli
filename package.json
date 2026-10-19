@@ -1,6 +1,6 @@
 {
   "name": "dotation",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Security hygiene scanner: finds basic security slip-ups before you ship. Scans run locally.",
   "license": "Apache-2.0",
   "private": true,
